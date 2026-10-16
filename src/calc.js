@@ -77,7 +77,8 @@
     const totalCosts = round2(subtotal + overhead);
     const originalContract = sum(j.quotes);
     const changeOrders = sum(j.changeOrders);
-    const totalContract = round2(originalContract + changeOrders);
+    // Matches the template: change orders are tracked but not added to the contract value.
+    const totalContract = originalContract;
     const profit = round2(totalContract - totalCosts);
     const margin = totalContract ? round2(profit / totalContract * 100) : 0;
     return {

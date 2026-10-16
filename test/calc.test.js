@@ -25,8 +25,8 @@ test('totals follow the template Total Breakdown formulas', () => {
   assert.strictEqual(t.totalCosts, 25760.56);
   assert.strictEqual(t.originalContract, 60000);
   assert.strictEqual(t.changeOrders, 2500);
-  assert.strictEqual(t.totalContract, 62500);
-  assert.strictEqual(t.profit, 36739.44);
+  assert.strictEqual(t.totalContract, 60000); // change orders not included, as in the template
+  assert.strictEqual(t.profit, 34239.44);
 });
 
 test('overhead percent is configurable and defaults to 12', () => {

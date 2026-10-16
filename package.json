@@ -8,7 +8,7 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
+    "dist:win": "electron-builder --win portable --x64",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux"
   },
@@ -23,10 +23,49 @@
   "build": {
     "appId": "com.jobcosting.app",
     "productName": "Job Costing",
-    "files": ["src/**/*", "package.json"],
-    "fileAssociations": [{ "ext": "jobcost", "name": "Job Costing File" }],
-    "win": { "target": ["nsis", "portable"] },
-    "mac": { "target": ["dmg"], "category": "public.app-category.business" },
-    "linux": { "target": ["AppImage"] }
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "jobcost",
+        "name": "Job Costing File"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "portable": {
+      "artifactName": "JobCosting-Portable.exe"
+    },
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US"
+    ]
   }
 }

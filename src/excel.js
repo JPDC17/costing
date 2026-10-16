@@ -147,13 +147,13 @@ async function exportWorkbook(job, filePath) {
     tr++;
   });
   line(tr, 'Original Contract Total', `${q(SHEETS.quotes)}!B${quotesTotalRow}`, t.originalContract); tr++;
-  line(tr, 'Change Orders', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders); tr++;
   const tcvRow = tr;
-  line(tr, 'Total Contract Value', `B${tr - 2}+B${tr - 1}`, t.totalContract, true); tr += 2;
+  line(tr, 'Total Contract Value', `B${tr - 1}`, t.totalContract, true); tr += 2;
   line(tr, 'Profit', `B${tcvRow}-B9`, t.profit, true);
   wsT.getCell(tr + 1, 1).value = 'Margin'; bold(wsT.getCell(tr + 1, 1));
   wsT.getCell(tr + 1, 2).value = { formula: `IF(B${tcvRow}=0,0,B${tr}/B${tcvRow})`, result: t.margin / 100 };
   wsT.getCell(tr + 1, 2).numFmt = '0.0%';
+  line(tr + 3, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders);
 
   await wb.xlsx.writeFile(filePath);
 }

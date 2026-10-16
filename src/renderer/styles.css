@@ -144,6 +144,7 @@ button.primary:hover { filter: brightness(1.05); }
 .breakdown tr.spacer + tr th, .breakdown tr.spacer + tr td { border-top: 0; }
 .breakdown tr.profit-row td { font-size: 17px; color: var(--pos); }
 .breakdown tr.profit-row td.neg { color: var(--neg); }
+.breakdown tr.info th, .breakdown tr.info td { color: var(--muted); }
 .breakdown tr.empty td { text-align: left; color: var(--muted); }
 .inline-pct { margin-left: 8px; color: var(--muted); }
 .inline-pct input {

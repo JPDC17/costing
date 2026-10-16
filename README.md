@@ -21,13 +21,13 @@ The Summary uses the same math as the template's **Total Breakdown** sheet:
 Total             = Labour + Equipment + Material and Supplier
 Overhead          = Total × overhead %        (12% by default, editable per job)
 Total Costs       = Total + Overhead
-Total Contract    = Approved Quotes + Change Orders
+Total Contract    = Approved Quotes
 Profit            = Total Contract − Total Costs
 Margin            = Profit ÷ Total Contract
 ```
 
-Note: the template has a Change Orders section but doesn't add it to the contract
-value. The app **does** add approved change orders to the Total Contract Value.
+As in the template, change orders are tracked on their own and are **not** added
+to the Total Contract Value. Their total is shown separately on the Summary.
 
 ## Features
 
@@ -41,24 +41,33 @@ value. The app **does** add approved change orders to the Total Contract Value.
 - **Export PDF** (Ctrl+P): a printable cost report for the job.
 - Asks before closing or opening another job if you have unsaved changes.
 
-## Running it
+## Windows app (.exe)
 
-Requires [Node.js](https://nodejs.org/) 18 or newer.
+**Ready to run:** `dist/JobCosting-Portable.exe` is one **portable** file, so there's no
+installer and nothing gets written to Program Files. Copy it anywhere and double-click it.
+
+- It isn't signed (no paid code-signing certificate), so Windows SmartScreen will probably
+  show an "unknown publisher" warning the first time. Click **More info → Run anyway**.
+- It's about 90 MB because Electron includes its own copy of Chromium and Node.js, so it
+  doesn't need a browser or anything else installed.
+
+**Rebuild it after making changes** (needs [Node.js](https://nodejs.org) installed):
+
+```bash
+npm install
+npm run dist:win
+```
+
+The new exe goes to `dist/JobCosting-Portable.exe`. The icon is `build/icon.ico`.
+
+## Running from source
 
 ```bash
 npm install
 npm start
 ```
 
-## Building an installer
-
-```bash
-npm run dist:win     # Windows installer + portable .exe  (run on Windows)
-npm run dist:mac     # macOS .dmg                          (run on a Mac)
-npm run dist:linux   # Linux AppImage
-```
-
-Installers are written to `dist/`.
+`npm run dist:mac` and `npm run dist:linux` build a macOS .dmg (run on a Mac) or a Linux AppImage.
 
 ## Tests
 
@@ -74,6 +83,8 @@ src/preload.js       Safe bridge between the window and the main process
 src/calc.js          Costing math (shared by the UI, the Excel export and the tests)
 src/excel.js         Excel export/import in the template layout
 src/renderer/        The user interface (HTML/CSS/JS)
+build/               App icon used for the exe
+dist/                Built Windows exe
 templates/           The original Basic Tracker template
 test/                Unit tests
 ```
