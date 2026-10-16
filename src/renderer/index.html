@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>Job Costing</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">Job Costing</div>
+      <input id="jobNameTop" class="job-name" type="text" placeholder="Untitled job" aria-label="Job name">
+      <div class="actions">
+        <button data-cmd="new" title="New job (Ctrl+N)">New</button>
+        <button data-cmd="open" title="Open job (Ctrl+O)">Open</button>
+        <button data-cmd="save" class="primary" title="Save (Ctrl+S)">Save</button>
+        <span class="sep"></span>
+        <button data-cmd="importExcel" title="Import a filled-in tracker spreadsheet (Ctrl+I)">Import Excel</button>
+        <button data-cmd="exportExcel" title="Export in the tracker template layout (Ctrl+E)">Export Excel</button>
+        <button data-cmd="exportPdf" title="Export a printable cost report (Ctrl+P)">Export PDF</button>
+      </div>
+    </header>
+
+    <nav class="sidebar" id="nav">
+      <button class="nav-item active" data-tab="summary"><span>Summary</span><span class="badge" id="nav-summary"></span></button>
+      <button class="nav-item" data-tab="contract"><span>Quotes &amp; Change Orders</span><span class="badge" id="nav-contract"></span></button>
+      <button class="nav-item" data-tab="labour"><span>Labour</span><span class="badge" id="nav-labour"></span></button>
+      <button class="nav-item" data-tab="equipment"><span>Equipment</span><span class="badge" id="nav-equipment"></span></button>
+      <button class="nav-item" data-tab="materials"><span>Materials &amp; Suppliers</span><span class="badge" id="nav-materials"></span></button>
+      <div class="nav-foot" id="fileInfo"></div>
+    </nav>
+
+    <main class="content">
+      <!-- Summary -->
+      <section class="tab active" id="tab-summary">
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-label">Total Contract Value</div><div class="kpi-value" id="k-contract"></div></div>
+          <div class="kpi"><div class="kpi-label">Total Costs</div><div class="kpi-value" id="k-costs"></div></div>
+          <div class="kpi"><div class="kpi-label">Profit</div><div class="kpi-value" id="k-profit"></div></div>
+          <div class="kpi"><div class="kpi-label">Margin</div><div class="kpi-value" id="k-margin"></div></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>Total Breakdown</h2>
+            <table class="breakdown">
+              <tbody>
+                <tr><th>Labour</th><td id="b-labour"></td></tr>
+                <tr><th>Equipment</th><td id="b-equipment"></td></tr>
+                <tr><th>Material and Supplier</th><td id="b-materials"></td></tr>
+                <tr class="subtotal"><th>Total</th><td id="b-subtotal"></td></tr>
+                <tr>
+                  <th>Overhead
+                    <span class="inline-pct"><input id="overheadPercent" type="number" min="0" step="0.5" aria-label="Overhead percent">%</span>
+                  </th>
+                  <td id="b-overhead"></td>
+                </tr>
+                <tr class="total"><th>Total Costs</th><td id="b-costs"></td></tr>
+                <tr class="spacer"><td colspan="2"></td></tr>
+                <tr><th>Original Contract Value</th><td id="b-original"></td></tr>
+                <tr><th>Change Orders</th><td id="b-co"></td></tr>
+                <tr class="total"><th>Total Contract Value</th><td id="b-contract"></td></tr>
+                <tr class="spacer"><td colspan="2"></td></tr>
+                <tr class="total profit-row"><th>Profit</th><td id="b-profit"></td></tr>
+              </tbody>
+            </table>
+            <div class="split" id="split" aria-label="Cost split"></div>
+            <div class="legend" id="legend"></div>
+          </div>
+
+          <div class="card">
+            <h2>Job Details</h2>
+            <div class="form">
+              <label>Job name<input data-field="jobName" type="text"></label>
+              <label>Job number<input data-field="jobNumber" type="text"></label>
+              <label>Client<input data-field="client" type="text"></label>
+              <label>Site address<input data-field="address" type="text"></label>
+              <label>Notes<textarea data-field="notes" rows="5"></textarea></label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Contract -->
+      <section class="tab" id="tab-contract">
+        <div class="card">
+          <div class="card-head"><h2>Approved Quotes</h2><span class="hint">Original contract value</span></div>
+          <div data-table="quotes"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Change Orders</h2><span class="hint">Added to the contract value</span></div>
+          <div data-table="changeOrders"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-labour">
+        <div class="card">
+          <div class="card-head"><h2>Labour</h2></div>
+          <div data-table="labour"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-equipment">
+        <div class="card">
+          <div class="card-head"><h2>Equipment</h2></div>
+          <div data-table="equipment"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-materials">
+        <div class="grid-materials">
+          <div class="card">
+            <div class="card-head"><h2>Material and Supplier Invoices</h2></div>
+            <div data-table="materials"></div>
+          </div>
+          <div class="card">
+            <h2>Company Totals</h2>
+            <table class="breakdown" id="supplierTotals"></table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Printable report (only visible when exporting PDF) -->
+  <div id="report" class="report"></div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="../calc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

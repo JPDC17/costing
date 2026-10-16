@@ -1,0 +1,32 @@
+{
+  "name": "job-costing",
+  "productName": "Job Costing",
+  "version": "1.0.0",
+  "description": "Desktop app for costing construction jobs (based on the Basic Tracker template)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.jobcosting.app",
+    "productName": "Job Costing",
+    "files": ["src/**/*", "package.json"],
+    "fileAssociations": [{ "ext": "jobcost", "name": "Job Costing File" }],
+    "win": { "target": ["nsis", "portable"] },
+    "mac": { "target": ["dmg"], "category": "public.app-category.business" },
+    "linux": { "target": ["AppImage"] }
+  }
+}
