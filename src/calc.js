@@ -9,17 +9,36 @@
   function num(v) {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
     if (typeof v !== 'string') return 0;
-    const n = parseFloat(v.replace(/[$,\s]/g, ''));
-    return Number.isFinite(n) ? n : 0;
+    let s = v.replace(/[$,\s]/g, '');
+    // Accounting style negatives, e.g. "(250.00)".
+    const neg = /^\(.*\)$/.test(s);
+    if (neg) s = s.slice(1, -1);
+    if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return 0;
+    const n = parseFloat(s);
+    return neg ? -n : n;
   }
 
-  // Round to cents to avoid floating point noise in displayed totals.
+  // A row the user added but never filled in.
+  function isBlankRow(row) {
+    return Object.entries(row || {}).every(([k, v]) =>
+      k === 'id' || (k === 'amount' ? !num(v) : !String(v ?? '').trim()));
+  }
+
+  // Round to cents the way Excel's ROUND(x, 2) does: halves go away from zero, and
+  // floating point noise is removed first so 1.005 rounds to 1.01.
   function round2(n) {
-    return Math.round((n + Number.EPSILON) * 100) / 100;
+    if (!Number.isFinite(n)) return 0;
+    const cents = Math.round(parseFloat((Math.abs(n) * 100).toPrecision(15)));
+    return (n < 0 ? -cents : cents) / 100 || 0;
+  }
+
+  // Each line is rounded to cents first, exactly as it is written to Excel.
+  function money(v) {
+    return round2(num(v));
   }
 
   function sum(rows, key = 'amount') {
-    return round2((rows || []).reduce((acc, r) => acc + num(r[key]), 0));
+    return round2((rows || []).reduce((acc, r) => acc + money(r[key]), 0));
   }
 
   function newJob() {
@@ -52,18 +71,24 @@
     return out;
   }
 
+  const NO_SUPPLIER = '(No supplier)';
+
   // Equivalent of the template's GROUPBY(Name, Amount, SUM) "Company Totals" block.
+  // Names are matched ignoring case and surrounding spaces (like Excel does), so
+  // "Lumber Co" and "lumber co " count as the same company.
   function supplierTotals(materials) {
     const map = new Map();
     for (const m of materials || []) {
+      if (isBlankRow(m)) continue;
       const name = String(m.supplier || '').trim();
-      if (!name && !num(m.amount)) continue;
-      const key = name || '(No supplier)';
-      map.set(key, (map.get(key) || 0) + num(m.amount));
+      const key = name.toLowerCase();
+      const entry = map.get(key) || { supplier: name || NO_SUPPLIER, total: 0, blank: !name };
+      entry.total += money(m.amount);
+      map.set(key, entry);
     }
-    return [...map.entries()]
-      .map(([supplier, total]) => ({ supplier, total: round2(total) }))
-      .sort((a, b) => a.supplier.localeCompare(b.supplier));
+    return [...map.values()]
+      .map(e => ({ supplier: e.supplier, total: round2(e.total), blank: e.blank }))
+      .sort((a, b) => (a.blank - b.blank) || a.supplier.localeCompare(b.supplier, undefined, { sensitivity: 'base' }));
   }
 
   function totals(job) {
@@ -95,5 +120,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, num, round2, sum, newJob, normalizeJob, supplierTotals, totals, formatMoney };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, num, round2, money, sum, isBlankRow, newJob, normalizeJob, supplierTotals, totals, formatMoney };
 });

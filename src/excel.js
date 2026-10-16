@@ -15,7 +15,7 @@ const SHEETS = {
 
 function bold(cell) { cell.font = { bold: true }; }
 function q(name) { return `'${name}'`; }
-function amount(v) { return Calc.round2(Calc.num(v)); }
+const amount = Calc.money;
 
 function header(ws, rowNum, labels) {
   const row = ws.getRow(rowNum);
@@ -27,6 +27,7 @@ function header(ws, rowNum, labels) {
 function writeQuoteSection(ws, startRow, title, rows) {
   header(ws, startRow, [title, 'Total', 'Notes']);
   let r = startRow + 1;
+  if (!rows.length) r++; // keep one empty row so the SUM never includes its own cell
   for (const x of rows) {
     ws.getCell(r, 1).value = x.description || '';
     ws.getCell(r, 2).value = amount(x.amount);
@@ -47,6 +48,7 @@ function writeDatedSheet(wb, name, rows) {
   ws.columns = [{ width: 27 }, { width: 18 }, { width: 40 }];
   header(ws, 1, ['Date(s)', 'Amount', 'Description']);
   let r = 2;
+  if (!rows.length) r++;
   for (const x of rows) {
     ws.getCell(r, 1).value = x.date || '';
     ws.getCell(r, 2).value = amount(x.amount);
@@ -63,6 +65,11 @@ function writeDatedSheet(wb, name, rows) {
 
 async function exportWorkbook(job, filePath) {
   job = Calc.normalizeJob(job);
+  // Leave out rows that were added but never filled in.
+  job = { ...job };
+  for (const k of ['quotes', 'changeOrders', 'labour', 'equipment', 'materials']) {
+    job[k] = job[k].filter(r => !Calc.isBlankRow(r));
+  }
   const t = Calc.totals(job);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Job Costing';
@@ -90,8 +97,9 @@ async function exportWorkbook(job, filePath) {
   wsM.getCell('A2').value = job.jobName || ''; bold(wsM.getCell('A2'));
   header(wsM, 3, ['Name', 'Invoice Number', 'Amount', 'Notes', 'Company Totals', 'Total']);
   let r = 4;
+  if (!job.materials.length) r++;
   for (const m of job.materials) {
-    wsM.getCell(r, 1).value = m.supplier || '';
+    wsM.getCell(r, 1).value = String(m.supplier || '').trim();
     wsM.getCell(r, 2).value = m.invoiceNumber || '';
     wsM.getCell(r, 3).value = amount(m.amount); wsM.getCell(r, 3).numFmt = MONEY;
     wsM.getCell(r, 4).value = m.notes || '';
@@ -102,12 +110,15 @@ async function exportWorkbook(job, filePath) {
   wsM.getCell(r, 3).value = { formula: `SUM(C4:C${mLast})`, result: t.materials };
   wsM.getCell(r, 3).numFmt = MONEY; bold(wsM.getCell(r, 3));
   const materialsRef = `${q(SHEETS.materials)}!C${r}`;
-  // Company totals (SUMIF instead of GROUPBY so it works in every Excel version).
+  // Company totals. SUMPRODUCT instead of GROUPBY so it works in every Excel version,
+  // and instead of SUMIF so names containing * ? < > = are matched literally.
   const suppliers = Calc.supplierTotals(job.materials);
+  const names = `$A$4:$A$${mLast}`, amounts = `$C$4:$C$${mLast}`;
   let s = 4;
   for (const sup of suppliers) {
     wsM.getCell(s, 5).value = sup.supplier;
-    wsM.getCell(s, 6).value = { formula: `SUMIF($A$4:$A$${mLast},E${s},$C$4:$C$${mLast})`, result: sup.total };
+    const match = sup.blank ? `${names}=""` : `${names}=E${s}`;
+    wsM.getCell(s, 6).value = { formula: `SUMPRODUCT((${match})*${amounts})`, result: sup.total };
     wsM.getCell(s, 6).numFmt = MONEY;
     s++;
   }
@@ -133,7 +144,7 @@ async function exportWorkbook(job, filePath) {
   wsT.getCell('C6').value = 'Overhead %'; bold(wsT.getCell('C6'));
   wsT.getCell('D6').value = Calc.num(job.overheadPercent) / 100;
   wsT.getCell('D6').numFmt = '0.0%';
-  line(7, `Overhead (${Calc.num(job.overheadPercent)}%)`, 'B6*$D$6', t.overhead);
+  line(7, `Overhead (${Calc.num(job.overheadPercent)}%)`, 'ROUND(B6*$D$6,2)', t.overhead);
   line(9, 'Total Costs', 'B6+B7', t.totalCosts, true);
 
   wsT.getCell('A11').value = 'Original Contract Value'; wsT.getCell('A11').font = { bold: true, underline: true };
@@ -239,10 +250,21 @@ async function importWorkbook(filePath) {
   }
   const wsT = get(SHEETS.breakdown);
   if (wsT) {
-    for (let r = 1; r <= wsT.rowCount; r++) {
-      const m = /overhead\s*\((\d+(?:\.\d+)?)%\)/i.exec(text(wsT.getRow(r).getCell(1)));
-      if (m) { job.overheadPercent = parseFloat(m[1]); break; }
+    // Prefer the editable "Overhead %" cell written by this app; fall back to the
+    // template's "Overhead (12%)" label.
+    let pct = null;
+    for (let r = 1; r <= wsT.rowCount && pct === null; r++) {
+      const row = wsT.getRow(r);
+      if (/^overhead %$/i.test(text(row.getCell(3)))) {
+        const v = cellValue(row.getCell(4));
+        if (typeof v === 'number') pct = Calc.round2(v * 100);
+      }
     }
+    for (let r = 1; r <= wsT.rowCount && pct === null; r++) {
+      const m = /overhead\s*\((\d+(?:\.\d+)?)%\)/i.exec(text(wsT.getRow(r).getCell(1)));
+      if (m) pct = parseFloat(m[1]);
+    }
+    if (pct !== null) job.overheadPercent = pct;
   }
   return job;
 }

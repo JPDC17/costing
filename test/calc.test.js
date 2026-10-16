@@ -37,15 +37,71 @@ test('overhead percent is configurable and defaults to 12', () => {
 
 test('supplier totals group invoices by company', () => {
   assert.deepStrictEqual(Calc.supplierTotals(job.materials), [
-    { supplier: 'Home Depot', total: 1499.75 },
-    { supplier: 'Lumber Co', total: 2500.25 },
+    { supplier: 'Home Depot', total: 1499.75, blank: false },
+    { supplier: 'Lumber Co', total: 2500.25, blank: false },
   ]);
+});
+
+test('supplier totals ignore case and spaces, and group blank names last', () => {
+  const list = Calc.supplierTotals([
+    { supplier: 'Lumber Co', amount: 10 },
+    { supplier: ' lumber co ', amount: 5 },
+    { supplier: '', amount: 3 },
+    { supplier: 'Abc', amount: 1 },
+    { supplier: '', amount: '' }, // untouched row: skipped
+  ]);
+  assert.deepStrictEqual(list, [
+    { supplier: 'Abc', total: 1, blank: false },
+    { supplier: 'Lumber Co', total: 15, blank: false },
+    { supplier: '(No supplier)', total: 3, blank: true },
+  ]);
+});
+
+test('num parses typed amounts', () => {
+  assert.strictEqual(Calc.num('$1,234.50'), 1234.5);
+  assert.strictEqual(Calc.num('(250)'), -250);
+  assert.strictEqual(Calc.num('-12.5'), -12.5);
+  assert.strictEqual(Calc.num('.5'), 0.5);
+  assert.strictEqual(Calc.num('12abc'), 0);
+  assert.strictEqual(Calc.num(''), 0);
+  assert.strictEqual(Calc.num(null), 0);
+});
+
+test('isBlankRow', () => {
+  assert.strictEqual(Calc.isBlankRow({ id: 'x', date: '', description: ' ', amount: '' }), true);
+  assert.strictEqual(Calc.isBlankRow({ id: 'x', date: '', amount: 0 }), true);
+  assert.strictEqual(Calc.isBlankRow({ id: 'x', date: 'Mar 3', amount: 0 }), false);
+  assert.strictEqual(Calc.isBlankRow({ id: 'x', amount: 5 }), false);
+});
+
+test('totals with cents, negatives and fractional overhead', () => {
+  const t = Calc.totals({
+    overheadPercent: 12.5,
+    quotes: [{ amount: 1000.01 }],
+    labour: [{ amount: 0.1 }, { amount: 0.2 }],
+    equipment: [{ amount: '(50)' }],
+    materials: [{ amount: 27 }],
+  });
+  assert.strictEqual(t.labour, 0.3);
+  assert.strictEqual(t.subtotal, -22.7);
+  assert.strictEqual(t.overhead, -2.84);
+  assert.strictEqual(t.totalCosts, -25.54);
+  assert.strictEqual(t.profit, 1025.55);
 });
 
 test('empty job is all zeros and margin does not divide by zero', () => {
   const t = Calc.totals(Calc.newJob());
   assert.strictEqual(t.totalCosts, 0);
   assert.strictEqual(t.margin, 0);
+});
+
+test('round2 matches Excel ROUND(x, 2)', () => {
+  assert.strictEqual(Calc.round2(1.005), 1.01);
+  assert.strictEqual(Calc.round2(2.675), 2.68);
+  assert.strictEqual(Calc.round2(-2.835), -2.84);
+  assert.strictEqual(Calc.round2(0.1 + 0.2), 0.3);
+  assert.strictEqual(Calc.round2(-0.001), 0);
+  assert.strictEqual(Calc.round2(4503.348), 4503.35);
 });
 
 test('formatMoney', () => {

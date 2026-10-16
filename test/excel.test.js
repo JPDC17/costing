@@ -78,3 +78,57 @@ test('imports a filled-in copy of the original Basic Tracker template', async ()
   assert.strictEqual(job2.equipment[0].amount, 300);
   assert.deepStrictEqual(job2.materials, [{ supplier: 'Lumber Co', invoiceNumber: 'L-1', amount: 2000, notes: '' }]);
 });
+
+// Every SUM in the export must not include its own cell (that is a circular reference).
+function assertNoSelfReference(wb) {
+  for (const ws of wb.worksheets) {
+    ws.eachRow(row => row.eachCell(cell => {
+      const f = cell.value && cell.value.formula;
+      if (!f) return;
+      for (const m of f.matchAll(/(?<![!'A-Z])\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)/g)) {
+        const [, c1, r1, c2, r2] = m;
+        const col = cell.address.replace(/\d+/, ''), r = Number(cell.row);
+        const inside = col >= c1 && col <= c2 && r >= Number(r1) && r <= Number(r2);
+        assert.ok(!inside, `${ws.name}!${cell.address} (${f}) refers to itself`);
+      }
+    }));
+  }
+}
+
+test('exporting an empty job has no circular formulas', async () => {
+  const file = tmp('empty.xlsx');
+  await exportWorkbook(Calc.newJob(), file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  assertNoSelfReference(wb);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(Calc.totals(back), Calc.totals(Calc.newJob()));
+});
+
+test('export skips blank rows, matches supplier names literally, rounds overhead', async () => {
+  const file = tmp('edge.xlsx');
+  await exportWorkbook({
+    ...Calc.newJob(),
+    overheadPercent: 12.5,
+    labour: [{ date: '', description: '', amount: '' }, { date: 'a', amount: 0.05 }],
+    materials: [{ supplier: '*', amount: 7 }, { supplier: '', amount: 3 }, { supplier: 'Lumber Co ', amount: 1 }],
+  }, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  assertNoSelfReference(wb);
+  assert.strictEqual(wb.getWorksheet(SHEETS.labour).getCell('A2').value, 'a');
+  const m = wb.getWorksheet(SHEETS.materials);
+  assert.strictEqual(m.getCell('A6').value, 'Lumber Co');
+  assert.ok(!/SUMIF\(/.test(m.getCell('F4').value.formula));
+  assert.strictEqual(wb.getWorksheet(SHEETS.breakdown).getCell('B7').value.formula, 'ROUND(B6*$D$6,2)');
+});
+
+test('import reads the overhead % cell if it was changed in Excel', async () => {
+  const file = tmp('pct.xlsx');
+  await exportWorkbook({ ...Calc.newJob(), labour: [{ date: 'x', amount: 100 }] }, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  wb.getWorksheet(SHEETS.breakdown).getCell('D6').value = 0.15;
+  await wb.xlsx.writeFile(file);
+  assert.strictEqual((await importWorkbook(file)).overheadPercent, 15);
+});

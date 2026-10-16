@@ -6,7 +6,7 @@ const TABLES = {
   quotes: {
     empty: 'No approved quotes yet.',
     cols: [
-      { key: 'description', label: 'Approved Quote', type: 'text', placeholder: 'e.g. Quote #1024 – framing' },
+      { key: 'description', label: 'Approved Quote', type: 'text', placeholder: 'e.g. Quote #1024 – framing', width: '50%' },
       { key: 'amount', label: 'Total', type: 'money' },
       { key: 'notes', label: 'Notes', type: 'text' },
     ],
@@ -14,7 +14,7 @@ const TABLES = {
   changeOrders: {
     empty: 'No change orders yet.',
     cols: [
-      { key: 'description', label: 'Change Order', type: 'text', placeholder: 'e.g. CO-01 – extra window' },
+      { key: 'description', label: 'Change Order', type: 'text', placeholder: 'e.g. CO-01 – extra window', width: '50%' },
       { key: 'amount', label: 'Total', type: 'money' },
       { key: 'notes', label: 'Notes', type: 'text' },
     ],
@@ -22,7 +22,7 @@ const TABLES = {
   labour: {
     empty: 'No labour entries yet.',
     cols: [
-      { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3 – Mar 7' },
+      { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3 – Mar 7', width: '24%' },
       { key: 'description', label: 'Description', type: 'text', placeholder: 'Crew / trade / hours' },
       { key: 'amount', label: 'Amount', type: 'money' },
     ],
@@ -30,7 +30,7 @@ const TABLES = {
   equipment: {
     empty: 'No equipment entries yet.',
     cols: [
-      { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3' },
+      { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3', width: '24%' },
       { key: 'description', label: 'Description', type: 'text', placeholder: 'Machine / rental' },
       { key: 'amount', label: 'Amount', type: 'money' },
     ],
@@ -38,8 +38,8 @@ const TABLES = {
   materials: {
     empty: 'No invoices yet.',
     cols: [
-      { key: 'supplier', label: 'Name', type: 'text', placeholder: 'Supplier', list: 'suppliers' },
-      { key: 'invoiceNumber', label: 'Invoice Number', type: 'text' },
+      { key: 'supplier', label: 'Name', type: 'text', placeholder: 'Supplier', list: 'suppliers', width: '30%' },
+      { key: 'invoiceNumber', label: 'Invoice Number', type: 'text', width: '17%' },
       { key: 'amount', label: 'Amount', type: 'money' },
       { key: 'notes', label: 'Notes', type: 'text' },
     ],
@@ -142,7 +142,17 @@ function renderTable(key) {
     el('td'),
   ]));
 
-  const table = el('table', { class: 'grid' }, [thead, tbody, tfoot]);
+  // Fixed column widths so long text in one column doesn't squeeze the others.
+  const colgroup = el('colgroup', {}, [
+    el('col', { class: 'c-num' }),
+    ...def.cols.map(c => {
+      const col = el('col', { class: c.type === 'money' ? 'c-money' : '' });
+      if (c.width) col.style.width = c.width;
+      return col;
+    }),
+    el('col', { class: 'c-act' }),
+  ]);
+  const table = el('table', { class: 'grid' }, [colgroup, thead, tbody, tfoot]);
   const addBtn = el('button', { class: 'add-row', text: '+ Add row', onclick: () => addRow(key) });
   host.replaceChildren(el('div', { class: 'table-wrap' }, table), addBtn);
   updateTotals();
@@ -161,15 +171,28 @@ function renderRow(key, row, i) {
       list: c.list,
       'aria-label': c.label,
     });
-    input.value = c.type === 'money' ? formatInput(row[c.key]) : (row[c.key] || '');
+    input.value = row[c.key] ?? '';
+    if (c.type === 'money' && !flagInvalid(input)) input.value = formatInput(row[c.key]);
+    // Show the full text on hover when it doesn't fit in the cell.
+    if (c.type !== 'money') input.title = input.value;
     input.addEventListener('input', () => {
       row[c.key] = input.value;
+      if (c.type !== 'money') input.title = input.value;
+      if (c.type === 'money') flagInvalid(input);
       markDirty();
       updateTotals();
     });
     if (c.type === 'money') {
-      input.addEventListener('focus', () => { input.value = row[c.key] === '' || row[c.key] == null ? '' : String(Calc.num(row[c.key]) || ''); input.select(); });
-      input.addEventListener('blur', () => { row[c.key] = Calc.round2(Calc.num(input.value)); input.value = formatInput(row[c.key]); updateTotals(); });
+      input.addEventListener('focus', () => {
+        if (!input.classList.contains('invalid')) input.value = isEmpty(row[c.key]) ? '' : String(Calc.num(row[c.key]));
+        input.select();
+      });
+      input.addEventListener('blur', () => {
+        if (flagInvalid(input)) return; // keep what they typed so they can fix it
+        row[c.key] = isEmpty(input.value) ? '' : Calc.money(input.value);
+        input.value = formatInput(row[c.key]);
+        updateTotals();
+      });
     }
     input.addEventListener('keydown', e => onCellKey(e, key, row, ci));
     tr.append(el('td', { class: c.type === 'money' ? 'money' : '' }, input));
@@ -181,8 +204,21 @@ function renderRow(key, row, i) {
   return tr;
 }
 
+function isEmpty(v) {
+  return v === null || v === undefined || String(v).trim() === '';
+}
+
+// Highlight amounts that aren't a number (they count as $0 until fixed).
+function flagInvalid(input) {
+  const v = input.value.trim();
+  const bad = v !== '' && Calc.num(v) === 0 && !/^[-+(]?\$?\s*0*(\.0*)?\)?$/.test(v);
+  input.classList.toggle('invalid', bad);
+  input.title = bad ? 'Not a number - this counts as $0.00' : '';
+  return bad;
+}
+
 function formatInput(v) {
-  if (v === '' || v === null || v === undefined) return '';
+  if (isEmpty(v)) return '';
   const n = Calc.num(v);
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -228,6 +264,7 @@ function deleteRow(key, id) {
     label: 'Undo',
     run: () => {
       rows.splice(idx, 0, removed);
+      markDirty();
       renderTable(key);
       $('#toast').classList.remove('show');
     },
@@ -331,16 +368,17 @@ function buildReport() {
   const j = state.job;
   const t = Calc.totals(j);
   const r = $('#report');
-  const rowsTable = (title, key, cols) => {
-    const rows = j[key];
+  const td = (c, text) => el('td', { class: c.money ? 'm' : '', text });
+  const rowsTable = (title, key, cols, hint) => {
+    const rows = j[key].filter(x => !Calc.isBlankRow(x));
     return el('div', { class: 'r-section' }, [
-      el('h3', { text: title }),
+      el('h3', {}, [title, hint ? el('span', { class: 'muted r-hint', text: ` ${hint}` }) : null]),
       el('table', {}, [
         el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.money ? 'm' : '', text: c.label })))),
         el('tbody', {}, rows.length
-          ? rows.map(x => el('tr', {}, cols.map(c => el('td', { class: c.money ? 'm' : '', text: c.money ? money(x[c.key]) : (x[c.key] || '') }))))
+          ? rows.map(x => el('tr', {}, cols.map(c => td(c, c.money ? money(x[c.key]) : (x[c.key] || '')))))
           : [el('tr', {}, el('td', { colspan: cols.length, class: 'muted', text: 'None' }))]),
-        el('tfoot', {}, el('tr', {}, cols.map((c, i) => el('td', { class: c.money ? 'm' : '', text: c.money ? money(Calc.sum(rows)) : (i === 0 ? 'Total' : '') })))),
+        el('tbody', { class: 'r-total' }, el('tr', {}, cols.map((c, i) => td(c, c.money ? money(Calc.sum(rows)) : (i === 0 ? 'Total' : ''))))),
       ]),
     ]);
   };
@@ -348,13 +386,16 @@ function buildReport() {
 
   const details = [
     ['Job number', j.jobNumber], ['Client', j.client], ['Site address', j.address],
-  ].filter(([, v]) => v).map(([k, v]) => el('div', {}, [el('b', { text: `${k}: ` }), v]));
+  ].filter(([, v]) => String(v || '').trim()).map(([k, v]) => el('div', {}, [el('b', { text: `${k}: ` }), v]));
+
+  const suppliers = Calc.supplierTotals(j.materials);
+  const dated = [{ key: 'date', label: 'Date(s)' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true }];
 
   r.replaceChildren(...[
     el('h1', { text: j.jobName || 'Untitled job' }),
     el('div', { class: 'r-meta' }, [...details, el('div', { class: 'muted', text: `Report generated ${new Date().toLocaleDateString()}` })]),
-    j.notes ? el('p', { class: 'r-notes', text: j.notes }) : null,
-    el('div', { class: 'r-section' }, [
+    String(j.notes || '').trim() ? el('p', { class: 'r-notes', text: j.notes }) : null,
+    el('div', { class: 'r-section r-keep' }, [
       el('h3', { text: 'Total Breakdown' }),
       el('table', { class: 'r-summary' }, el('tbody', {}, [
         line('Labour', money(t.labour)),
@@ -363,18 +404,25 @@ function buildReport() {
         line('Total', money(t.subtotal), 'b'),
         line(`Overhead (${t.overheadPercent}%)`, money(t.overhead)),
         line('Total Costs', money(t.totalCosts), 'b'),
-        line('Original Contract Value', money(t.originalContract)),
+        line('Original Contract Value', money(t.originalContract), 'gap'),
         line('Total Contract Value', money(t.totalContract), 'b'),
-        line('Profit', money(t.profit), 'b big'),
+        line('Profit', money(t.profit), `b big gap${t.profit < 0 ? ' neg' : ''}`),
         line('Margin', `${t.margin.toFixed(1)}%`),
-        line('Change Orders (not included)', money(t.changeOrders)),
+        line('Change Orders (not included)', money(t.changeOrders), 'gap muted'),
       ])),
     ]),
     rowsTable('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
-    rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
-    rowsTable('Labour', 'labour', [{ key: 'date', label: 'Date(s)' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true }]),
-    rowsTable('Equipment', 'equipment', [{ key: 'date', label: 'Date(s)' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true }]),
+    rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }], '(not included in the contract value)'),
+    rowsTable('Labour', 'labour', dated),
+    rowsTable('Equipment', 'equipment', dated),
     rowsTable('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Name' }, { key: 'invoiceNumber', label: 'Invoice #' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
+    suppliers.length ? el('div', { class: 'r-section r-keep' }, [
+      el('h3', { text: 'Company Totals' }),
+      el('table', { class: 'r-summary' }, el('tbody', {}, [
+        ...suppliers.map(x => line(x.supplier, money(x.total))),
+        line('Total', money(t.materials), 'b'),
+      ])),
+    ]) : null,
   ].filter(Boolean));
 }
 
@@ -448,7 +496,7 @@ const commands = {
   async exportPdf() {
     buildReport();
     try {
-      const res = await window.api.exportPdf(state.job.jobName);
+      const res = await window.api.exportPdf(state.job.jobName || 'Untitled job');
       if (res) toast('Report saved as PDF', { label: 'Show file', run: () => window.api.reveal(res.filePath) });
     } catch (err) { toast(`Could not export PDF: ${err.message}`); }
   },
