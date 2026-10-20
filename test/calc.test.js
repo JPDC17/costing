@@ -142,3 +142,10 @@ test('formatMoney', () => {
   assert.strictEqual(Calc.formatMoney(-20), '-$20.00');
   assert.strictEqual(Calc.formatMoney('abc'), '$0.00');
 });
+
+test('damaged job files: rows that are not objects are dropped', () => {
+  const j = Calc.normalizeJob({ labour: [null, 5, 'x', [1], { amount: 10 }], draws: 'nope' });
+  assert.deepStrictEqual(j.labour, [{ amount: 10 }]);
+  assert.deepStrictEqual(j.draws, []);
+  assert.strictEqual(Calc.totals(j).labour, 10);
+});

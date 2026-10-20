@@ -48,15 +48,20 @@ to the Total Contract Value. Their total is shown separately on the Summary.
 
 - Spreadsheet-style entry: press **Enter** to move down or add a new row, use the
   arrow keys to move between rows, and **×** to delete a row (you can undo).
-- Amounts that aren't a number are highlighted in red (they count as $0 until fixed).
-- Totals are rounded to the cent the same way Excel's `ROUND` does, so the app and
-  the exported spreadsheet always agree.
-- Saves each job as a `.jobcost` file (Ctrl+S / Ctrl+O).
+- Amounts that aren't a number are highlighted in red (they count as $0 until fixed),
+  and saving or exporting reminds you about them.
+- Each amount and the overhead are rounded to the cent the same way Excel's `ROUND`
+  does, so the app and the exported spreadsheet always agree. (The original template
+  keeps fractions of a cent in the overhead; the totals it displays are the same.)
+- Saves each job as a `.jobcost` file (Ctrl+S, Save As Ctrl+Shift+S, Open Ctrl+O).
+  Saving writes a temporary copy first, so a crash mid-save can't damage the file.
 - **Export Excel** (Ctrl+E): writes a workbook in the template's layout with
   working formulas, so it still works as a tracker in Excel.
 - **Import Excel** (Ctrl+I): loads a filled-in copy of the Basic Tracker
-  template (or a workbook exported by this app).
-- **Export PDF** (Ctrl+P): a printable cost report for the job (summary, every line item, company totals, page numbers).
+  template (or a workbook exported by this app). Other spreadsheets are refused
+  rather than replacing your job with an empty one.
+- **Export PDF** (Ctrl+P): a printable cost report for the job (summary, every line item
+  including progress draws, company totals, page numbers).
 - Asks before closing or opening another job if you have unsaved changes.
 
 ## Windows app (.exe)

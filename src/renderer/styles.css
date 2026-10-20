@@ -107,7 +107,7 @@ button.primary:hover { filter: brightness(1.05); }
 .badge:empty { display: none; }
 .nav-item.active .badge { color: #e7ebf0; }
 .badge.neg { color: #ff8a7a !important; }
-.nav-foot { margin-top: auto; padding: 8px 12px; font-size: 12px; color: #8995a3; word-break: break-all; }
+.nav-foot { margin-top: auto; padding: 8px 12px; font-size: 12px; color: #8995a3; overflow-wrap: anywhere; }
 
 /* Content */
 .content { overflow: auto; padding: 20px 24px 40px; }
@@ -217,6 +217,7 @@ button.icon.danger:hover { color: var(--neg); background: #fdecea; }
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
   background: #222a35; color: #fff; padding: 10px 14px; border-radius: 8px;
   display: flex; gap: 14px; align-items: center; opacity: 0; pointer-events: none;
+  max-width: min(720px, calc(100vw - 48px));
   transition: opacity .18s, transform .18s; box-shadow: 0 6px 24px rgba(0,0,0,.18);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }

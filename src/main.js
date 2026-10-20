@@ -10,6 +10,29 @@ const XLSX_FILTERS = [{ name: 'Excel Workbook', extensions: ['xlsx'] }];
 let win;
 let allowClose = false;
 
+// Turn file system errors into something a person can act on.
+function friendly(err, what) {
+  if (err && (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES')) {
+    return new Error(`The file is open in another program or is read-only. Close it (for example in Excel) and try ${what} again.`);
+  }
+  if (err && err.code === 'ENOENT') return new Error(`That folder doesn't exist. Choose another location and try ${what} again.`);
+  if (err && err.code === 'ENOSPC') return new Error('The disk is full.');
+  return err;
+}
+
+// Write to a temporary file first, then swap it in, so a crash or power cut
+// part-way through a save can never leave a half-written file.
+async function writeFileSafely(target, data) {
+  const tmp = `${target}.${process.pid}.tmp`;
+  try {
+    await fs.writeFile(tmp, data);
+    await fs.rename(tmp, target);
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
 function safeName(name, fallback) {
   const base = String(name || '').replace(/[\\/:*?"<>|]+/g, '').trim();
   return base || fallback;
@@ -93,7 +116,15 @@ ipcMain.handle('job:open', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: JOB_FILTERS });
   if (res.canceled || !res.filePaths.length) return null;
   const filePath = res.filePaths[0];
-  const job = Calc.normalizeJob(JSON.parse(await fs.readFile(filePath, 'utf8')));
+  let data;
+  try {
+    data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  } catch (err) {
+    if (err instanceof SyntaxError) throw new Error('This isn\'t a Job Costing file, or the file is damaged.');
+    throw err;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('This isn\'t a Job Costing file.');
+  const job = Calc.normalizeJob(data);
   app.addRecentDocument(filePath);
   return { filePath, job };
 });
@@ -108,7 +139,11 @@ ipcMain.handle('job:save', async (_e, { job, filePath, saveAs }) => {
     if (res.canceled || !res.filePath) return null;
     target = res.filePath;
   }
-  await fs.writeFile(target, JSON.stringify(job, null, 2), 'utf8');
+  try {
+    await writeFileSafely(target, JSON.stringify(job, null, 2));
+  } catch (err) {
+    throw friendly(err, 'saving');
+  }
   app.addRecentDocument(target);
   return { filePath: target };
 });
@@ -119,7 +154,11 @@ ipcMain.handle('excel:export', async (_e, job) => {
     filters: XLSX_FILTERS,
   });
   if (res.canceled || !res.filePath) return null;
-  await exportWorkbook(job, res.filePath);
+  try {
+    await exportWorkbook(job, res.filePath);
+  } catch (err) {
+    throw friendly(err, 'exporting');
+  }
   return { filePath: res.filePath };
 });
 
@@ -146,7 +185,11 @@ ipcMain.handle('pdf:export', async (_e, jobName) => {
       <span>${esc(jobName)} \u2014 Cost Report</span>
       <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
   });
-  await fs.writeFile(res.filePath, data);
+  try {
+    await fs.writeFile(res.filePath, data);
+  } catch (err) {
+    throw friendly(err, 'exporting');
+  }
   return { filePath: res.filePath };
 });
 

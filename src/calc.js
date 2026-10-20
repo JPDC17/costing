@@ -73,7 +73,8 @@
     const base = newJob();
     const out = Object.assign(base, job || {});
     for (const k of LIST_KEYS) {
-      if (!Array.isArray(out[k])) out[k] = [];
+      // Drop anything that isn't a row, so a damaged file can't break the totals.
+      out[k] = Array.isArray(out[k]) ? out[k].filter(r => r && typeof r === 'object' && !Array.isArray(r)) : [];
     }
     if (out.overheadPercent === undefined || out.overheadPercent === null || out.overheadPercent === '') {
       out.overheadPercent = DEFAULT_OVERHEAD_PERCENT;

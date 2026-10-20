@@ -81,13 +81,31 @@ function el(tag, attrs = {}, children = []) {
   return e;
 }
 
+// Electron wraps errors from the main process as "Error invoking remote method '…': Error: …".
+function errMsg(err) {
+  return String((err && err.message) || err).replace(/^Error invoking remote method '[^']*':\s*(\w*Error:\s*)?/, '');
+}
+
+// Something was typed in an amount cell, but it isn't a number (so it counts as $0).
+function isBadAmount(value) {
+  const v = String(value ?? '').trim();
+  return v !== '' && Calc.num(v) === 0 && !/^[-+(]?\$?\s*0*(\.0*)?\)?$/.test(v);
+}
+
+// Amounts that aren't numbers count as $0; say so when saving or exporting.
+function invalidAmountNote() {
+  let n = 0;
+  for (const key of Object.keys(TABLES)) for (const r of state.job[key]) if (isBadAmount(r.amount)) n++;
+  return n ? ` — note: ${n} amount${n === 1 ? ' isn’t a number and was' : 's aren’t numbers and were'} counted as $0 (shown in red)` : '';
+}
+
 function toast(msg, action) {
   const t = $('#toast');
   t.replaceChildren(el('span', { text: msg }));
   if (action) t.append(el('button', { text: action.label, onclick: action.run }));
   t.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove('show'), 4000);
+  toast.timer = setTimeout(() => t.classList.remove('show'), msg.length > 60 ? 8000 : 4000);
 }
 
 // ---------- State helpers ----------
@@ -222,8 +240,7 @@ function isEmpty(v) {
 
 // Highlight amounts that aren't a number (they count as $0 until fixed).
 function flagInvalid(input) {
-  const v = input.value.trim();
-  const bad = v !== '' && Calc.num(v) === 0 && !/^[-+(]?\$?\s*0*(\.0*)?\)?$/.test(v);
+  const bad = isBadAmount(input.value);
   input.classList.toggle('invalid', bad);
   input.title = bad ? 'Not a number - this counts as $0.00' : '';
   return bad;
@@ -282,6 +299,7 @@ function deleteRow(key, id) {
   toast('Row deleted', {
     label: 'Undo',
     run: () => {
+      if (state.job[key] !== rows) return; // a different job was opened since
       rows.splice(idx, 0, removed);
       markDirty();
       renderTable(key);
@@ -503,10 +521,10 @@ async function save(saveAs) {
     state.filePath = res.filePath;
     state.dirty = false;
     updateTitle();
-    toast('Job saved');
+    toast(`Job saved${invalidAmountNote()}`);
     return true;
   } catch (err) {
-    toast(`Could not save: ${err.message}`);
+    toast(`Could not save: ${errMsg(err)}`);
     return false;
   }
 }
@@ -523,7 +541,7 @@ const commands = {
     try {
       const res = await window.api.openJob();
       if (res) { setJob(res.job, res.filePath); toast('Job opened'); }
-    } catch (err) { toast(`Could not open file: ${err.message}`); }
+    } catch (err) { toast(`Could not open file: ${errMsg(err)}`); }
   },
   save: () => save(false),
   saveAs: () => save(true),
@@ -536,20 +554,20 @@ const commands = {
       setJob(res.job, null, true);
       const n = Object.keys(TABLES).reduce((a, k) => a + state.job[k].length, 0);
       toast(`Imported ${n} line item${n === 1 ? '' : 's'} from Excel`);
-    } catch (err) { toast(`Could not import: ${err.message}`); }
+    } catch (err) { toast(`Could not import: ${errMsg(err)}`); }
   },
   async exportExcel() {
     try {
       const res = await window.api.exportExcel(serialize());
-      if (res) toast('Exported to Excel', { label: 'Show file', run: () => window.api.reveal(res.filePath) });
-    } catch (err) { toast(`Could not export: ${err.message}`); }
+      if (res) toast(`Exported to Excel${invalidAmountNote()}`, { label: 'Show file', run: () => window.api.reveal(res.filePath) });
+    } catch (err) { toast(`Could not export: ${errMsg(err)}`); }
   },
   async exportPdf() {
     buildReport();
     try {
       const res = await window.api.exportPdf(state.job.jobName || 'Untitled job');
-      if (res) toast('Report saved as PDF', { label: 'Show file', run: () => window.api.reveal(res.filePath) });
-    } catch (err) { toast(`Could not export PDF: ${err.message}`); }
+      if (res) toast(`Report saved as PDF${invalidAmountNote()}`, { label: 'Show file', run: () => window.api.reveal(res.filePath) });
+    } catch (err) { toast(`Could not export PDF: ${errMsg(err)}`); }
   },
 };
 

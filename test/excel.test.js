@@ -140,3 +140,29 @@ test('import reads the overhead % cell if it was changed in Excel', async () => 
   await wb.xlsx.writeFile(file);
   assert.strictEqual((await importWorkbook(file)).overheadPercent, 15);
 });
+
+test('import refuses a workbook that is not a tracker', async () => {
+  const file = tmp('other.xlsx');
+  const wb = new ExcelJS.Workbook();
+  wb.addWorksheet('Sheet1').getCell('A1').value = 'Shopping list';
+  await wb.xlsx.writeFile(file);
+  await assert.rejects(importWorkbook(file), /doesn't look like/);
+});
+
+test('import refuses a file that is not an Excel workbook', async () => {
+  const file = tmp('fake.xlsx');
+  fs.writeFileSync(file, 'not a spreadsheet');
+  await assert.rejects(importWorkbook(file), /could not be read/);
+});
+
+test('draw numbers are written as numbers and read back as text', async () => {
+  const file = tmp('draws.xlsx');
+  await exportWorkbook({ ...Calc.newJob(), draws: [{ drawNumber: '3', amount: 10 }, { drawNumber: '4A', amount: 5 }] }, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const ws = wb.getWorksheet(SHEETS.draws);
+  assert.strictEqual(ws.getCell('A2').value, 3);
+  assert.strictEqual(ws.getCell('A3').value, '4A');
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(back.draws.map(d => d.drawNumber), ['3', '4A']);
+});

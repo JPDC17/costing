@@ -117,7 +117,10 @@ async function exportWorkbook(job, filePath) {
   let d = 2;
   if (!job.draws.length) d++; // keep one empty row so the SUM never includes its own cell
   for (const x of job.draws) {
-    wsD.getCell(d, 1).value = x.drawNumber || '';
+    // Plain draw numbers are written as numbers so Excel doesn't flag "number stored as text".
+    const n = String(x.drawNumber ?? '').trim();
+    wsD.getCell(d, 1).value = /^\d{1,9}$/.test(n) ? Number(n) : n;
+    wsD.getCell(d, 1).alignment = { horizontal: 'left' };
     wsD.getCell(d, 2).value = x.date || '';
     wsD.getCell(d, 3).value = x.description || '';
     wsD.getCell(d, 4).value = amount(x.amount); wsD.getCell(d, 4).numFmt = MONEY;
@@ -188,7 +191,7 @@ async function exportWorkbook(job, filePath) {
   line(6, 'Total', 'SUM(B2:B4)', t.subtotal, true);
   wsT.getCell('C6').value = 'Overhead %'; bold(wsT.getCell('C6'));
   wsT.getCell('D6').value = Calc.num(job.overheadPercent) / 100;
-  wsT.getCell('D6').numFmt = '0.0%';
+  wsT.getCell('D6').numFmt = '0.0#%'; // shows 12.0% and 7.25%
   line(7, `Overhead (${Calc.num(job.overheadPercent)}%)`, 'ROUND(B6*$D$6,2)', t.overhead);
   line(9, 'Total Costs', 'B6+B7', t.totalCosts, true);
 
@@ -287,9 +290,16 @@ function findRow(ws, label) {
 
 async function importWorkbook(filePath) {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(filePath);
+  try {
+    await wb.xlsx.readFile(filePath);
+  } catch (err) {
+    throw new Error('This file could not be read as an Excel workbook (.xlsx).');
+  }
   const job = Calc.newJob();
   const get = name => wb.worksheets.find(w => w.name.trim().toLowerCase() === name.toLowerCase());
+  if (!Object.values(SHEETS).some(get)) {
+    throw new Error('This workbook doesn\'t look like the Basic Tracker template or a Job Costing export (no matching sheet names).');
+  }
 
   const wsQ = get(SHEETS.quotes);
   if (wsQ) {
