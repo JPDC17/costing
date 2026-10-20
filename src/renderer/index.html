@@ -25,6 +25,7 @@
     <nav class="sidebar" id="nav">
       <button class="nav-item active" data-tab="summary"><span>Summary</span><span class="badge" id="nav-summary"></span></button>
       <button class="nav-item" data-tab="contract"><span>Quotes &amp; Change Orders</span><span class="badge" id="nav-contract"></span></button>
+      <button class="nav-item" data-tab="draws"><span>Progress Draws</span><span class="badge" id="nav-draws"></span></button>
       <button class="nav-item" data-tab="labour"><span>Labour</span><span class="badge" id="nav-labour"></span></button>
       <button class="nav-item" data-tab="equipment"><span>Equipment</span><span class="badge" id="nav-equipment"></span></button>
       <button class="nav-item" data-tab="materials"><span>Materials &amp; Suppliers</span><span class="badge" id="nav-materials"></span></button>
@@ -35,10 +36,10 @@
       <!-- Summary -->
       <section class="tab active" id="tab-summary">
         <div class="kpis">
-          <div class="kpi"><div class="kpi-label">Total Contract Value</div><div class="kpi-value" id="k-contract"></div></div>
-          <div class="kpi"><div class="kpi-label">Total Costs</div><div class="kpi-value" id="k-costs"></div></div>
-          <div class="kpi"><div class="kpi-label">Profit</div><div class="kpi-value" id="k-profit"></div></div>
-          <div class="kpi"><div class="kpi-label">Margin</div><div class="kpi-value" id="k-margin"></div></div>
+          <div class="kpi"><div class="kpi-label">Total Contract Value</div><div class="kpi-value" id="k-contract"></div><div class="kpi-sub" id="k-contract-sub"></div></div>
+          <div class="kpi"><div class="kpi-label">Draws Submitted</div><div class="kpi-value" id="k-draws"></div><div class="kpi-sub" id="k-draws-sub"></div></div>
+          <div class="kpi"><div class="kpi-label">Total Costs</div><div class="kpi-value" id="k-costs"></div><div class="kpi-sub" id="k-costs-sub"></div></div>
+          <div class="kpi"><div class="kpi-label">Profit to Date</div><div class="kpi-value" id="k-ptd"></div><div class="kpi-sub" id="k-ptd-sub"></div></div>
         </div>
 
         <div class="grid-2">
@@ -61,7 +62,15 @@
                 <tr><th>Original Contract Value</th><td id="b-original"></td></tr>
                 <tr class="total"><th>Total Contract Value</th><td id="b-contract"></td></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
-                <tr class="total profit-row"><th>Profit</th><td id="b-profit"></td></tr>
+                <tr class="total"><th>Projected Profit <span class="hint">(contract − costs)</span></th><td id="b-profit"></td></tr>
+                <tr><th>Projected Margin</th><td id="b-margin"></td></tr>
+                <tr class="spacer"><td colspan="2"></td></tr>
+                <tr class="section"><th colspan="2">Progress Draws</th></tr>
+                <tr><th>Draws Submitted <span class="hint" id="b-draw-count"></span></th><td id="b-draws"></td></tr>
+                <tr><th>Billed to Date <span class="hint">(% of contract)</span></th><td id="b-billed"></td></tr>
+                <tr><th>Remaining to Bill</th><td id="b-remaining"></td></tr>
+                <tr class="total profit-row"><th>Profit to Date <span class="hint">(draws − costs)</span></th><td id="b-ptd"></td></tr>
+                <tr><th>Margin on Draws</th><td id="b-margin-td"></td></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="info"><th>Change Orders <span class="hint">(not included)</span></th><td id="b-co"></td></tr>
               </tbody>
@@ -92,6 +101,23 @@
         <div class="card">
           <div class="card-head"><h2>Change Orders</h2><span class="hint">Tracked separately — not included in the contract value</span></div>
           <div data-table="changeOrders"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-draws">
+        <div class="card">
+          <div class="draw-stats">
+            <div><div class="kpi-label">Total Contract Value</div><div class="stat" id="d-contract"></div></div>
+            <div><div class="kpi-label">Draws Submitted</div><div class="stat" id="d-draws"></div></div>
+            <div><div class="kpi-label">Remaining to Bill</div><div class="stat" id="d-remaining"></div></div>
+            <div><div class="kpi-label">Profit to Date</div><div class="stat" id="d-ptd"></div></div>
+          </div>
+          <div class="meter" aria-hidden="true"><div class="meter-fill" id="d-meter"></div></div>
+          <div class="hint" id="d-meter-label"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Progress Draws</h2><span class="hint">Each progress billing submitted to the client</span></div>
+          <div data-table="draws"></div>
         </div>
       </section>
 

@@ -29,6 +29,31 @@ test('totals follow the template Total Breakdown formulas', () => {
   assert.strictEqual(t.profit, 34239.44);
 });
 
+test('progress draws give billed to date and profit to date', () => {
+  const t = Calc.totals({ ...job, draws: [{ amount: 20000 }, { amount: '10,500.50' }, { drawNumber: '', amount: '' }] });
+  // costs are 25760.56 and the contract is 60000 (from the job above)
+  assert.strictEqual(t.draws, 30500.5);
+  assert.strictEqual(t.drawCount, 2); // the untouched row isn't counted
+  assert.strictEqual(Calc.formatPercent(t.billedPercent), '50.8%');
+  assert.strictEqual(t.remainingToBill, 29499.5);
+  assert.strictEqual(t.profitToDate, 4739.94);
+  assert.strictEqual(Calc.formatPercent(t.marginToDate), '15.5%');
+  assert.strictEqual(t.profit, 34239.44); // projected profit is unchanged by draws
+});
+
+test('no draws yet: profit to date is minus the costs, margin is 0', () => {
+  const t = Calc.totals(job);
+  assert.strictEqual(t.draws, 0);
+  assert.strictEqual(t.profitToDate, -25760.56);
+  assert.strictEqual(t.marginToDate, 0);
+  assert.strictEqual(t.billedPercent, 0);
+});
+
+test('older job files without draws still load', () => {
+  const old = { jobName: 'Old', quotes: [{ amount: 5 }] };
+  assert.deepStrictEqual(Calc.normalizeJob(old).draws, []);
+});
+
 test('overhead percent is configurable and defaults to 12', () => {
   assert.strictEqual(Calc.newJob().overheadPercent, 12);
   assert.strictEqual(Calc.totals({ ...job, overheadPercent: 0 }).overhead, 0);
@@ -102,6 +127,14 @@ test('round2 matches Excel ROUND(x, 2)', () => {
   assert.strictEqual(Calc.round2(0.1 + 0.2), 0.3);
   assert.strictEqual(Calc.round2(-0.001), 0);
   assert.strictEqual(Calc.round2(4503.348), 4503.35);
+});
+
+test('formatPercent rounds once from the exact value', () => {
+  // 67.5516 must show 67.6%; rounding to 67.55 first would show 67.5%
+  assert.strictEqual(Calc.formatPercent(67.55159673548094), '67.6%');
+  assert.strictEqual(Calc.formatPercent(30.5268), '30.5%');
+  assert.strictEqual(Calc.formatPercent(-19.25), '-19.3%');
+  assert.strictEqual(Calc.formatPercent(0), '0.0%');
 });
 
 test('formatMoney', () => {

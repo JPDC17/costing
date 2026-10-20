@@ -13,6 +13,10 @@ const job = {
   overheadPercent: 10,
   quotes: [{ description: 'Quote 1 - Framing', amount: 40000, notes: 'Signed' }, { description: 'Quote 2 - Roofing', amount: 15000, notes: '' }],
   changeOrders: [{ description: 'CO-1 Extra window', amount: 1800, notes: 'Approved by email' }],
+  draws: [
+    { drawNumber: '1', date: '2026-03-31', description: 'March progress', amount: 15000, notes: 'Paid' },
+    { drawNumber: '2', date: '2026-04-30', description: 'April progress', amount: 12500.25, notes: '' },
+  ],
   labour: [{ date: 'Mar 3 - Mar 7', description: 'Framing crew', amount: 9000 }],
   equipment: [{ date: 'Mar 4', description: 'Scissor lift', amount: 650 }],
   materials: [
@@ -36,8 +40,10 @@ test('export uses the template sheet names and live formulas', async () => {
   const tb = wb.getWorksheet(SHEETS.breakdown);
   assert.strictEqual(tb.getCell('B2').value.formula, "'Labour'!B3");
   assert.strictEqual(tb.getCell('B9').value.result, t.totalCosts);
-  const profitRow = [...Array(tb.rowCount).keys()].map(i => i + 1).find(r => tb.getCell(r, 1).value === 'Profit');
-  assert.strictEqual(tb.getCell(profitRow, 2).value.result, t.profit);
+  const rowOf = label => [...Array(tb.rowCount).keys()].map(i => i + 1).find(r => tb.getCell(r, 1).value === label);
+  assert.strictEqual(tb.getCell(rowOf('Projected Profit (Contract - Costs)'), 2).value.result, t.profit);
+  assert.strictEqual(tb.getCell(rowOf('Draws Submitted'), 2).value.formula, "'Progress Draws'!D4");
+  assert.strictEqual(tb.getCell(rowOf('Profit to Date (Draws - Costs)'), 2).value.result, t.profitToDate);
 });
 
 test('export then import round-trips the job', async () => {
@@ -48,6 +54,7 @@ test('export then import round-trips the job', async () => {
   assert.strictEqual(back.overheadPercent, 10);
   assert.deepStrictEqual(back.quotes, job.quotes);
   assert.deepStrictEqual(back.changeOrders, job.changeOrders);
+  assert.deepStrictEqual(back.draws, job.draws);
   assert.deepStrictEqual(back.labour, job.labour);
   assert.deepStrictEqual(back.equipment, job.equipment);
   assert.deepStrictEqual(back.materials, job.materials);
@@ -72,6 +79,7 @@ test('imports a filled-in copy of the original Basic Tracker template', async ()
   const job2 = await importWorkbook(file);
   assert.strictEqual(job2.jobName, 'Smith Garage');
   assert.strictEqual(job2.overheadPercent, 12);
+  assert.deepStrictEqual(job2.draws, []); // the original template has no draws sheet
   assert.deepStrictEqual(job2.quotes, [{ description: 'Garage build', amount: 30000, notes: '' }]);
   assert.deepStrictEqual(job2.changeOrders, [{ description: 'CO 1', amount: 1200, notes: '' }]);
   assert.deepStrictEqual(job2.labour, [{ date: 'Week 1', amount: 5000, description: '' }]);

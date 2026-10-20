@@ -5,15 +5,16 @@ A desktop app for costing construction jobs, built on the layout of the
 
 ## What it tracks
 
-The app has one screen per sheet in the template:
+The app has one screen per sheet in the template, plus Progress Draws:
 
 | Screen | Template sheet | Columns |
 | --- | --- | --- |
 | Quotes & Change Orders | Approved Quotes | Quote / change order, Total, Notes |
+| Progress Draws | Progress Draws *(added by the app)* | Draw #, Date Submitted, Description, Amount, Notes |
 | Labour | Labour | Date(s), Description, Amount |
 | Equipment | Equipment | Date(s), Description, Amount |
 | Materials & Suppliers | Material and Supplier Invoices | Name, Invoice Number, Amount, Notes, plus totals per company |
-| Summary | Total Breakdown | Live totals, overhead, contract value, profit and margin |
+| Summary | Total Breakdown | Live totals, overhead, contract value, projected profit, draws and profit to date |
 
 The Summary uses the same math as the template's **Total Breakdown** sheet:
 
@@ -22,9 +23,23 @@ Total             = Labour + Equipment + Material and Supplier
 Overhead          = Total × overhead %        (12% by default, editable per job)
 Total Costs       = Total + Overhead
 Total Contract    = Approved Quotes
-Profit            = Total Contract − Total Costs
-Margin            = Profit ÷ Total Contract
+Projected Profit  = Total Contract − Total Costs
+Projected Margin  = Projected Profit ÷ Total Contract
 ```
+
+Progress draws show what you've actually billed so far:
+
+```
+Draws Submitted   = sum of every progress draw entered
+Billed to Date    = Draws Submitted ÷ Total Contract
+Remaining to Bill = Total Contract − Draws Submitted
+Profit to Date    = Draws Submitted − Total Costs
+Margin on Draws   = Profit to Date ÷ Draws Submitted
+```
+
+Profit to Date is the main profit figure on the Summary. Projected Profit is what the
+job makes once the whole contract has been billed. Draw amounts are the gross amount
+of each billing as submitted (before any holdback).
 
 As in the template, change orders are tracked on their own and are **not** added
 to the Total Contract Value. Their total is shown separately on the Summary.

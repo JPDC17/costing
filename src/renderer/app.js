@@ -19,6 +19,17 @@ const TABLES = {
       { key: 'notes', label: 'Notes', type: 'text' },
     ],
   },
+  draws: {
+    empty: 'No progress draws yet.',
+    hideIndex: true, // the Draw # column already numbers the rows
+    cols: [
+      { key: 'drawNumber', label: 'Draw #', type: 'text', placeholder: '1', width: '11%' },
+      { key: 'date', label: 'Date Submitted', type: 'text', placeholder: 'e.g. 2026-03-31', width: '17%' },
+      { key: 'description', label: 'Description', type: 'text', placeholder: 'e.g. March progress – framing 60%', width: '34%' },
+      { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'notes', label: 'Notes', type: 'text', placeholder: 'e.g. Paid Apr 15' },
+    ],
+  },
   labour: {
     empty: 'No labour entries yet.',
     cols: [
@@ -119,8 +130,9 @@ function renderTable(key) {
   const def = TABLES[key];
   const rows = state.job[key];
 
+  const idx = !def.hideIndex;
   const thead = el('thead', {}, el('tr', {}, [
-    el('th', { class: 'num', text: '#' }),
+    idx ? el('th', { class: 'num', text: '#' }) : null,
     ...def.cols.map(c => el('th', { class: c.type === 'money' ? 'money' : '', text: c.label })),
     el('th', { class: 'act' }),
   ]));
@@ -128,12 +140,12 @@ function renderTable(key) {
   const tbody = el('tbody');
   rows.forEach((row, i) => tbody.append(renderRow(key, row, i)));
   if (!rows.length) {
-    tbody.append(el('tr', { class: 'empty' }, el('td', { colspan: def.cols.length + 2, text: def.empty })));
+    tbody.append(el('tr', { class: 'empty' }, el('td', { colspan: def.cols.length + (idx ? 2 : 1), text: def.empty })));
   }
 
   const moneyIdx = def.cols.findIndex(c => c.type === 'money');
   const tfoot = el('tfoot', {}, el('tr', {}, [
-    el('td'),
+    idx ? el('td') : null,
     ...def.cols.map((c, i) => {
       if (i === moneyIdx) return el('td', { class: 'money', 'data-total': key });
       if (i === 0) return el('td', { text: 'Total' });
@@ -144,7 +156,7 @@ function renderTable(key) {
 
   // Fixed column widths so long text in one column doesn't squeeze the others.
   const colgroup = el('colgroup', {}, [
-    el('col', { class: 'c-num' }),
+    idx ? el('col', { class: 'c-num' }) : null,
     ...def.cols.map(c => {
       const col = el('col', { class: c.type === 'money' ? 'c-money' : '' });
       if (c.width) col.style.width = c.width;
@@ -161,7 +173,7 @@ function renderTable(key) {
 function renderRow(key, row, i) {
   const def = TABLES[key];
   const tr = el('tr', { 'data-id': row.id });
-  tr.append(el('td', { class: 'num', text: String(i + 1) }));
+  if (!def.hideIndex) tr.append(el('td', { class: 'num', text: String(i + 1) }));
   def.cols.forEach((c, ci) => {
     const input = el('input', {
       type: 'text',
@@ -247,10 +259,17 @@ function focusCell(key, rowIdx, colIdx) {
 function addRow(key, focusCol = 0) {
   const row = { id: newId() };
   for (const c of TABLES[key].cols) row[c.key] = '';
+  if (key === 'draws') row.drawNumber = String(nextDrawNumber());
   state.job[key].push(row);
   markDirty();
   renderTable(key);
   focusCell(key, state.job[key].length - 1, focusCol);
+}
+
+// One more than the highest draw number used so far.
+function nextDrawNumber() {
+  const nums = state.job.draws.map(d => parseInt(String(d.drawNumber).replace(/\D/g, ''), 10)).filter(Number.isFinite);
+  return (nums.length ? Math.max(...nums) : 0) + 1;
 }
 
 function deleteRow(key, id) {
@@ -280,12 +299,16 @@ function updateTotals() {
     if (cell) cell.textContent = money(Calc.sum(j[key]));
   }
 
+  const pct = Calc.formatPercent;
   $('#k-contract').textContent = money(t.totalContract);
+  $('#k-contract-sub').textContent = `Remaining to bill ${money(t.remainingToBill)}`;
+  $('#k-draws').textContent = money(t.draws);
+  $('#k-draws-sub').textContent = `${pct(t.billedPercent)} of contract · ${t.drawCount} draw${t.drawCount === 1 ? '' : 's'}`;
   $('#k-costs').textContent = money(t.totalCosts);
-  $('#k-profit').textContent = money(t.profit);
-  $('#k-profit').classList.toggle('neg', t.profit < 0);
-  $('#k-margin').textContent = `${t.margin.toFixed(1)}%`;
-  $('#k-margin').classList.toggle('neg', t.margin < 0);
+  $('#k-costs-sub').textContent = `Includes ${t.overheadPercent}% overhead`;
+  $('#k-ptd').textContent = money(t.profitToDate);
+  $('#k-ptd').classList.toggle('neg', t.profitToDate < 0);
+  $('#k-ptd-sub').textContent = `Margin ${pct(t.marginToDate)} · Projected ${money(t.profit)}`;
 
   $('#b-labour').textContent = money(t.labour);
   $('#b-equipment').textContent = money(t.equipment);
@@ -298,10 +321,32 @@ function updateTotals() {
   $('#b-contract').textContent = money(t.totalContract);
   $('#b-profit').textContent = money(t.profit);
   $('#b-profit').classList.toggle('neg', t.profit < 0);
+  $('#b-margin').textContent = pct(t.margin);
+  $('#b-draw-count').textContent = `(${t.drawCount})`;
+  $('#b-draws').textContent = money(t.draws);
+  $('#b-billed').textContent = pct(t.billedPercent);
+  $('#b-remaining').textContent = money(t.remainingToBill);
+  $('#b-ptd').textContent = money(t.profitToDate);
+  $('#b-ptd').classList.toggle('neg', t.profitToDate < 0);
+  $('#b-margin-td').textContent = pct(t.marginToDate);
 
-  $('#nav-summary').textContent = money(t.profit);
-  $('#nav-summary').classList.toggle('neg', t.profit < 0);
+  // Progress Draws screen
+  $('#d-contract').textContent = money(t.totalContract);
+  $('#d-draws').textContent = money(t.draws);
+  $('#d-remaining').textContent = money(t.remainingToBill);
+  $('#d-remaining').classList.toggle('neg', t.remainingToBill < 0);
+  $('#d-ptd').textContent = money(t.profitToDate);
+  $('#d-ptd').classList.toggle('neg', t.profitToDate < 0);
+  $('#d-meter').style.width = `${Math.min(Math.max(t.billedPercent, 0), 100)}%`;
+  $('#d-meter').classList.toggle('over', t.billedPercent > 100);
+  $('#d-meter-label').textContent = t.totalContract
+    ? `${pct(t.billedPercent)} of the contract billed${t.billedPercent > 100 ? ' — draws are more than the contract value' : ''}`
+    : 'Enter approved quotes to see how much of the contract has been billed.';
+
+  $('#nav-summary').textContent = `Profit to date ${money(t.profitToDate)}`;
+  $('#nav-summary').classList.toggle('neg', t.profitToDate < 0);
   $('#nav-contract').textContent = money(t.totalContract);
+  $('#nav-draws').textContent = money(t.draws);
   $('#nav-labour').textContent = money(t.labour);
   $('#nav-equipment').textContent = money(t.equipment);
   $('#nav-materials').textContent = money(t.materials);
@@ -406,13 +451,19 @@ function buildReport() {
         line('Total Costs', money(t.totalCosts), 'b'),
         line('Original Contract Value', money(t.originalContract), 'gap'),
         line('Total Contract Value', money(t.totalContract), 'b'),
-        line('Profit', money(t.profit), `b big gap${t.profit < 0 ? ' neg' : ''}`),
-        line('Margin', `${t.margin.toFixed(1)}%`),
+        line('Projected Profit (contract − costs)', money(t.profit), `b gap${t.profit < 0 ? ' neg' : ''}`),
+        line('Projected Margin', Calc.formatPercent(t.margin)),
+        line(`Draws Submitted (${t.drawCount})`, money(t.draws), 'gap'),
+        line('Billed to Date (% of contract)', Calc.formatPercent(t.billedPercent)),
+        line('Remaining to Bill', money(t.remainingToBill)),
+        line('Profit to Date (draws − costs)', money(t.profitToDate), `b big${t.profitToDate < 0 ? ' neg' : ''}`),
+        line('Margin on Draws', Calc.formatPercent(t.marginToDate)),
         line('Change Orders (not included)', money(t.changeOrders), 'gap muted'),
       ])),
     ]),
     rowsTable('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
     rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }], '(not included in the contract value)'),
+    rowsTable('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw #' }, { key: 'date', label: 'Date Submitted' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
     rowsTable('Labour', 'labour', dated),
     rowsTable('Equipment', 'equipment', dated),
     rowsTable('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Name' }, { key: 'invoiceNumber', label: 'Invoice #' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
@@ -439,7 +490,7 @@ async function confirmIfDirty() {
 function serialize() {
   // Store amounts as numbers in the saved file.
   const j = JSON.parse(JSON.stringify(state.job));
-  for (const key of Object.keys(TABLES)) for (const r of j[key]) r.amount = Calc.round2(Calc.num(r.amount));
+  for (const key of Object.keys(TABLES)) for (const r of j[key]) r.amount = isEmpty(r.amount) ? '' : Calc.money(r.amount);
   j.overheadPercent = Calc.num(j.overheadPercent);
   j.savedAt = new Date().toISOString();
   return j;

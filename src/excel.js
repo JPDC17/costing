@@ -7,6 +7,7 @@ const MONEY = '"$"#,##0.00';
 const ACCT = '_-"$"* #,##0.00_-;\\-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-';
 const SHEETS = {
   quotes: 'Approved Quotes',
+  draws: 'Progress Draws',
   labour: 'Labour',
   equipment: 'Equipment',
   materials: 'Material and Supplier Invoices',
@@ -63,11 +64,35 @@ function writeDatedSheet(wb, name, rows) {
   return `${q(name)}!B${r}`;
 }
 
+// Widen each column to fit its longest value (within limits), so names aren't cut off.
+function autoFit(ws, min = 10, max = 60) {
+  ws.columns.forEach((col, i) => {
+    let len = 0;
+    col.eachCell({ includeEmpty: false }, cell => {
+      if (cell.isMerged) return; // titles span several columns, so they don't set a width
+      let v = cell.value;
+      if (v && typeof v === 'object' && 'formula' in v) v = v.result;
+      let text = v == null ? '' : String(v);
+      if (typeof v === 'number') text = cell.numFmt && cell.numFmt.includes('%') ? '100.0%' : Calc.formatMoney(v) + '  ';
+      len = Math.max(len, text.length);
+    });
+    col.width = Math.min(Math.max(len + 2, min), max);
+  });
+}
+
+// Print each sheet one page wide, and keep the header row in view while scrolling.
+function finishSheet(ws, headerRow, landscape = false) {
+  autoFit(ws);
+  ws.pageSetup = { orientation: landscape ? 'landscape' : 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } };
+  ws.headerFooter = { oddFooter: '&L&8&A&R&8Page &P of &N' };
+  if (headerRow) ws.views = [{ state: 'frozen', ySplit: headerRow }];
+}
+
 async function exportWorkbook(job, filePath) {
   job = Calc.normalizeJob(job);
   // Leave out rows that were added but never filled in.
   job = { ...job };
-  for (const k of ['quotes', 'changeOrders', 'labour', 'equipment', 'materials']) {
+  for (const k of Calc.LIST_KEYS) {
     job[k] = job[k].filter(r => !Calc.isBlankRow(r));
   }
   const t = Calc.totals(job);
@@ -85,6 +110,25 @@ async function exportWorkbook(job, filePath) {
   const coStart = quotesTotalRow + 2;
   const coTotalRow = writeQuoteSection(wsQ, coStart, 'Change Orders', job.changeOrders);
 
+  // --- Progress Draws ---
+  const wsD = wb.addWorksheet(SHEETS.draws);
+  wsD.columns = [{ width: 10 }, { width: 18 }, { width: 40 }, { width: 18 }, { width: 40 }];
+  header(wsD, 1, ['Draw #', 'Date Submitted', 'Description', 'Amount', 'Notes']);
+  let d = 2;
+  if (!job.draws.length) d++; // keep one empty row so the SUM never includes its own cell
+  for (const x of job.draws) {
+    wsD.getCell(d, 1).value = x.drawNumber || '';
+    wsD.getCell(d, 2).value = x.date || '';
+    wsD.getCell(d, 3).value = x.description || '';
+    wsD.getCell(d, 4).value = amount(x.amount); wsD.getCell(d, 4).numFmt = MONEY;
+    wsD.getCell(d, 5).value = x.notes || '';
+    d++;
+  }
+  wsD.getCell(d, 1).value = 'Total'; bold(wsD.getCell(d, 1));
+  wsD.getCell(d, 4).value = { formula: `SUM(D2:D${d - 1})`, result: t.draws };
+  wsD.getCell(d, 4).numFmt = MONEY; bold(wsD.getCell(d, 4));
+  const drawsRef = `${q(SHEETS.draws)}!D${d}`;
+
   // --- Labour / Equipment ---
   const labourRef = writeDatedSheet(wb, SHEETS.labour, job.labour);
   const equipRef = writeDatedSheet(wb, SHEETS.equipment, job.equipment);
@@ -94,6 +138,7 @@ async function exportWorkbook(job, filePath) {
   wsM.columns = [{ width: 28 }, { width: 18 }, { width: 18 }, { width: 45 }, { width: 28 }, { width: 16 }];
   wsM.mergeCells('A1:C1');
   wsM.getCell('A1').value = 'Material and Supplier Invoices'; wsM.getCell('A1').font = { bold: true, size: 14 };
+  wsM.mergeCells('A2:D2');
   wsM.getCell('A2').value = job.jobName || ''; bold(wsM.getCell('A2'));
   header(wsM, 3, ['Name', 'Invoice Number', 'Amount', 'Notes', 'Company Totals', 'Total']);
   let r = 4;
@@ -160,11 +205,33 @@ async function exportWorkbook(job, filePath) {
   line(tr, 'Original Contract Total', `${q(SHEETS.quotes)}!B${quotesTotalRow}`, t.originalContract); tr++;
   const tcvRow = tr;
   line(tr, 'Total Contract Value', `B${tr - 1}`, t.totalContract, true); tr += 2;
-  line(tr, 'Profit', `B${tcvRow}-B9`, t.profit, true);
-  wsT.getCell(tr + 1, 1).value = 'Margin'; bold(wsT.getCell(tr + 1, 1));
-  wsT.getCell(tr + 1, 2).value = { formula: `IF(B${tcvRow}=0,0,B${tr}/B${tcvRow})`, result: t.margin / 100 };
-  wsT.getCell(tr + 1, 2).numFmt = '0.0%';
-  line(tr + 3, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders);
+  const pct = (row, label, formula, result) => {
+    wsT.getCell(row, 1).value = label; bold(wsT.getCell(row, 1));
+    wsT.getCell(row, 2).value = { formula, result };
+    wsT.getCell(row, 2).numFmt = '0.0%';
+  };
+  const profitRow = tr;
+  line(tr, 'Projected Profit (Contract - Costs)', `B${tcvRow}-B9`, t.profit, true);
+  pct(tr + 1, 'Projected Margin', `IF(B${tcvRow}=0,0,B${profitRow}/B${tcvRow})`, t.margin / 100);
+  tr += 3;
+
+  wsT.getCell(tr, 1).value = 'Progress Draws'; wsT.getCell(tr, 1).font = { bold: true, underline: true }; tr++;
+  const drawsRow = tr;
+  line(tr, 'Draws Submitted', drawsRef, t.draws); tr++;
+  pct(tr, 'Billed to Date (% of Contract)', `IF(B${tcvRow}=0,0,B${drawsRow}/B${tcvRow})`, t.billedPercent / 100); tr++;
+  line(tr, 'Remaining to Bill', `B${tcvRow}-B${drawsRow}`, t.remainingToBill); tr++;
+  const ptdRow = tr;
+  line(tr, 'Profit to Date (Draws - Costs)', `B${drawsRow}-B9`, t.profitToDate, true); tr++;
+  pct(tr, 'Margin on Draws', `IF(B${drawsRow}=0,0,B${ptdRow}/B${drawsRow})`, t.marginToDate / 100); tr += 2;
+
+  line(tr, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders);
+
+  finishSheet(wsQ, 2);
+  finishSheet(wsD, 1, true);
+  finishSheet(wb.getWorksheet(SHEETS.labour), 1);
+  finishSheet(wb.getWorksheet(SHEETS.equipment), 1);
+  finishSheet(wsM, 3, true);
+  finishSheet(wsT, 0);
 
   await wb.xlsx.writeFile(filePath);
 }
@@ -237,6 +304,10 @@ async function importWorkbook(filePath) {
       const next = text(wsQ.getRow(coRow + 1).getCell(2)).toLowerCase();
       job.changeOrders = readRows(wsQ, next === 'total' ? coRow + 2 : coRow + 1, quoteMap);
     }
+  }
+  const wsD = get(SHEETS.draws);
+  if (wsD) {
+    job.draws = readRows(wsD, 2, [['drawNumber', 1], ['date', 2], ['description', 3], ['amount', 4, 'money'], ['notes', 5]]);
   }
   for (const [key, name] of [['labour', SHEETS.labour], ['equipment', SHEETS.equipment]]) {
     const ws = get(name);

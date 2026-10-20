@@ -126,13 +126,25 @@ button.primary:hover { filter: brightness(1.05); }
 .card-head h2 { margin: 0; }
 .hint { color: var(--muted); font-size: 12px; }
 
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
-.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.kpi { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .kpi-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 .kpi-value { font-size: clamp(18px, 1.9vw, 26px); white-space: nowrap; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.kpi-value.neg, td.neg { color: var(--neg); }
+.kpi-value.neg, td.neg, .stat.neg { color: var(--neg); }
+.kpi-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.breakdown tr.section th { font-weight: 700; padding-top: 4px; color: var(--ink); border-top: 0; }
+.breakdown tr.section + tr th, .breakdown tr.section + tr td { border-top: 0; }
+.breakdown .hint { font-weight: 400; }
+
+/* Progress Draws screen */
+.draw-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.stat { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 16px 0 6px; }
+.meter-fill { height: 100%; width: 0; background: var(--s3); transition: width .2s; }
+.meter-fill.over { background: var(--neg); }
 
 .grid-2 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.grid-2 > *, .grid-materials > * { min-width: 0; } /* wide tables scroll inside their card */
 .grid-materials { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
 
 /* Breakdown table */
@@ -187,6 +199,9 @@ table.grid { width: 100%; min-width: 620px; border-collapse: collapse; table-lay
   width: 100%; text-overflow: ellipsis; border: 1px solid transparent; background: transparent; padding: 6px 6px; border-radius: 4px;
 }
 .grid input:hover { border-color: var(--line); }
+/* Example text only shows in the cell being edited, so it never looks like real data. */
+.grid input::placeholder { color: transparent; }
+.grid input:focus::placeholder { color: #9aa1ad; }
 .grid input:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid input.money { text-align: right; font-variant-numeric: tabular-nums; }
 .grid input.invalid, .grid input.invalid:focus { border-color: var(--neg); background: #fdecea; box-shadow: none; }
@@ -211,6 +226,8 @@ button.icon.danger:hover { color: var(--neg); background: #fdecea; }
 .report { display: none; }
 
 @media (max-width: 1250px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-value { font-size: 24px; }
   .grid-materials { grid-template-columns: minmax(0, 1fr); }
   .grid-materials > .card:last-child { max-width: 480px; }
 }
@@ -219,12 +236,10 @@ button.icon.danger:hover { color: var(--neg); background: #fdecea; }
   .brand { width: auto; font-size: 0; gap: 0; } /* logo only, more room for the job name */
   .topbar { gap: 10px; }
   .actions button { padding: 6px 9px; }
-  .kpi-value { font-size: 20px; }
 }
 @media (max-width: 1050px) {
   .grid-2, .grid-materials { grid-template-columns: 1fr; }
-  .kpis { grid-template-columns: repeat(2, 1fr); }
-  .kpi-value { font-size: 24px; }
+  .draw-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media print {
