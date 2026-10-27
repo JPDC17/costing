@@ -96,6 +96,7 @@ async function exportWorkbook(job, filePath) {
     job[k] = job[k].filter(r => !Calc.isBlankRow(r));
   }
   const t = Calc.totals(job);
+  const f = Calc.forecast(job);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Job Costing';
   wb.created = new Date();
@@ -214,8 +215,8 @@ async function exportWorkbook(job, filePath) {
     wsT.getCell(row, 2).numFmt = '0.0%';
   };
   const profitRow = tr;
-  line(tr, 'Projected Profit (Contract - Costs)', `B${tcvRow}-B9`, t.profit, true);
-  pct(tr + 1, 'Projected Margin', `IF(B${tcvRow}=0,0,B${profitRow}/B${tcvRow})`, t.margin / 100);
+  line(tr, 'Contract Profit (Costs to Date)', `B${tcvRow}-B9`, t.profit, true);
+  pct(tr + 1, 'Contract Margin', `IF(B${tcvRow}=0,0,B${profitRow}/B${tcvRow})`, t.margin / 100);
   tr += 3;
 
   wsT.getCell(tr, 1).value = 'Progress Draws'; wsT.getCell(tr, 1).font = { bold: true, underline: true }; tr++;
@@ -226,6 +227,35 @@ async function exportWorkbook(job, filePath) {
   const ptdRow = tr;
   line(tr, 'Profit to Date (Draws - Costs)', `B${drawsRow}-B9`, t.profitToDate, true); tr++;
   pct(tr, 'Margin on Draws', `IF(B${drawsRow}=0,0,B${ptdRow}/B${drawsRow})`, t.marginToDate / 100); tr += 2;
+
+  // Profit forecast. The three shaded cells are inputs: change them in Excel and the
+  // forecast recalculates.
+  wsT.getCell(tr, 1).value = 'Profit Forecast'; wsT.getCell(tr, 1).font = { bold: true, underline: true };
+  wsT.getCell(tr, 3).value = 'Shaded cells can be changed'; wsT.getCell(tr, 3).font = { italic: true, color: { argb: 'FF666666' } };
+  tr++;
+  const input = (row, label, value, fmt) => {
+    wsT.getCell(row, 1).value = label; bold(wsT.getCell(row, 1));
+    const c = wsT.getCell(row, 2);
+    c.value = value === null ? null : value;
+    c.numFmt = fmt;
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    c.border = { top: { style: 'thin', color: { argb: 'FFBFBFBF' } }, bottom: { style: 'thin', color: { argb: 'FFBFBFBF' } }, left: { style: 'thin', color: { argb: 'FFBFBFBF' } }, right: { style: 'thin', color: { argb: 'FFBFBFBF' } } };
+  };
+  const dwRow = tr; input(tr++, 'Days Worked to Date', f.daysWorked || null, '0.##');
+  const drRow = tr; input(tr++, 'Days Remaining', f.daysRemaining || null, '0.##');
+  const mrRow = tr; input(tr++, 'Materials Still to Buy', Calc.num(job.materialsRemaining) ? f.materialsRemaining : null, ACCT);
+  const dw = `B${dwRow}`, dr = `B${drRow}`;
+  line(tr++, 'Labour per Day', `IF(${dw}>0,B2/${dw},0)`, f.labourPerDay);
+  line(tr++, 'Equipment per Day', `IF(${dw}>0,B3/${dw},0)`, f.equipmentPerDay);
+  const rlRow = tr; line(tr++, 'Remaining Labour', `IF(${dw}>0,ROUND(B2*${dr}/${dw},2),0)`, f.labourRemaining);
+  const reRow = tr; line(tr++, 'Remaining Equipment', `IF(${dw}>0,ROUND(B3*${dr}/${dw},2),0)`, f.equipmentRemaining);
+  const fsRow = tr; line(tr++, 'Forecast Subtotal', `B6+B${rlRow}+B${reRow}+B${mrRow}`, f.subtotal);
+  const foRow = tr; line(tr++, 'Forecast Overhead', `ROUND(B${fsRow}*$D$6,2)`, f.overhead);
+  const ftcRow = tr; line(tr++, 'Forecast Total Costs', `B${fsRow}+B${foRow}`, f.totalCosts, true);
+  line(tr++, 'Cost to Complete', `B${ftcRow}-B9`, f.costToComplete);
+  const fpRow = tr; line(tr++, 'Forecast Profit at Completion', `B${tcvRow}-B${ftcRow}`, f.profit, true);
+  pct(tr++, 'Forecast Margin', `IF(B${tcvRow}=0,0,B${fpRow}/B${tcvRow})`, f.margin / 100);
+  tr++;
 
   line(tr, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders);
 
@@ -346,6 +376,14 @@ async function importWorkbook(filePath) {
       if (m) pct = parseFloat(m[1]);
     }
     if (pct !== null) job.overheadPercent = pct;
+    // Forecast inputs (blank cells mean "not entered").
+    const fields = { 'days worked to date': 'daysWorked', 'days remaining': 'daysRemaining', 'materials still to buy': 'materialsRemaining' };
+    for (let r = 1; r <= wsT.rowCount; r++) {
+      const key = fields[text(wsT.getRow(r).getCell(1)).toLowerCase()];
+      if (!key) continue;
+      const v = cellValue(wsT.getRow(r).getCell(2));
+      job[key] = typeof v === 'number' ? v : (Calc.num(v) || '');
+    }
   }
   return job;
 }

@@ -26,6 +26,7 @@
       <button class="nav-item active" data-tab="summary"><span>Summary</span><span class="badge" id="nav-summary"></span></button>
       <button class="nav-item" data-tab="contract"><span>Quotes &amp; Change Orders</span><span class="badge" id="nav-contract"></span></button>
       <button class="nav-item" data-tab="draws"><span>Progress Draws</span><span class="badge" id="nav-draws"></span></button>
+      <button class="nav-item" data-tab="forecast"><span>Profit Forecast</span><span class="badge" id="nav-forecast"></span></button>
       <button class="nav-item" data-tab="labour"><span>Labour</span><span class="badge" id="nav-labour"></span></button>
       <button class="nav-item" data-tab="equipment"><span>Equipment</span><span class="badge" id="nav-equipment"></span></button>
       <button class="nav-item" data-tab="materials"><span>Materials &amp; Suppliers</span><span class="badge" id="nav-materials"></span></button>
@@ -62,8 +63,8 @@
                 <tr><th>Original Contract Value</th><td id="b-original"></td></tr>
                 <tr class="total"><th>Total Contract Value</th><td id="b-contract"></td></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
-                <tr class="total"><th>Projected Profit <span class="hint">(contract − costs)</span></th><td id="b-profit"></td></tr>
-                <tr><th>Projected Margin</th><td id="b-margin"></td></tr>
+                <tr class="total"><th>Contract Profit <span class="hint">(costs to date)</span></th><td id="b-profit"></td></tr>
+                <tr><th>Contract Margin</th><td id="b-margin"></td></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="section"><th colspan="2">Progress Draws</th></tr>
                 <tr><th>Draws Submitted <span class="hint" id="b-draw-count"></span></th><td id="b-draws"></td></tr>
@@ -71,6 +72,11 @@
                 <tr><th>Remaining to Bill</th><td id="b-remaining"></td></tr>
                 <tr class="total profit-row"><th>Profit to Date <span class="hint">(draws − costs)</span></th><td id="b-ptd"></td></tr>
                 <tr><th>Margin on Draws</th><td id="b-margin-td"></td></tr>
+                <tr class="spacer"><td colspan="2"></td></tr>
+                <tr class="section"><th colspan="2">Profit Forecast</th></tr>
+                <tr class="total profit-row fc-ready"><th>Forecast Profit at Completion <span class="hint" id="b-fc-days"></span></th><td id="b-fc-profit"></td></tr>
+                <tr class="fc-ready"><th>Forecast Margin</th><td id="b-fc-margin"></td></tr>
+                <tr class="fc-missing info"><th colspan="2">Enter the days worked on the <a href="#" data-goto="forecast">Profit Forecast</a> screen to see this.</th></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="info"><th>Change Orders <span class="hint">(not included)</span></th><td id="b-co"></td></tr>
               </tbody>
@@ -101,6 +107,37 @@
         <div class="card">
           <div class="card-head"><h2>Change Orders</h2><span class="hint">Tracked separately — not included in the contract value</span></div>
           <div data-table="changeOrders"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-forecast">
+        <div class="card">
+          <div class="card-head"><h2>Profit Forecast</h2><span class="hint">Carries labour and equipment forward at your cost per day so far</span></div>
+          <div class="fc-inputs">
+            <label>Days worked to date<input id="fc-worked" data-fc="daysWorked" type="number" min="0" step="0.5" placeholder="e.g. 24"></label>
+            <label>Days remaining<input id="fc-remaining" data-fc="daysRemaining" type="number" min="0" step="0.5" placeholder="e.g. 16"></label>
+            <label>Materials still to buy<input id="fc-materials" data-fc="materialsRemaining" type="text" inputmode="decimal" placeholder="Optional, e.g. 12,500"></label>
+          </div>
+          <p class="hint fc-basis" id="fc-basis"></p>
+        </div>
+
+        <div class="card">
+          <div class="draw-stats">
+            <div><div class="kpi-label">Forecast Total Costs</div><div class="stat" id="fc-costs"></div></div>
+            <div><div class="kpi-label">Cost to Complete</div><div class="stat" id="fc-complete"></div></div>
+            <div><div class="kpi-label">Forecast Profit</div><div class="stat" id="fc-profit"></div></div>
+            <div><div class="kpi-label">Forecast Margin</div><div class="stat" id="fc-margin"></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Forecast Breakdown</h2>
+          <div class="table-wrap">
+            <table class="breakdown fc-table">
+              <thead><tr><th></th><th>To Date</th><th id="fc-rem-head">Remaining</th><th>At Completion</th></tr></thead>
+              <tbody id="fc-body"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

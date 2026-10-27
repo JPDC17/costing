@@ -96,6 +96,7 @@ function isBadAmount(value) {
 function invalidAmountNote() {
   let n = 0;
   for (const key of Object.keys(TABLES)) for (const r of state.job[key]) if (isBadAmount(r.amount)) n++;
+  if (isBadAmount(state.job.materialsRemaining)) n++;
   return n ? ` — note: ${n} amount${n === 1 ? ' isn’t a number and was' : 's aren’t numbers and were'} counted as $0 (shown in red)` : '';
 }
 
@@ -326,7 +327,10 @@ function updateTotals() {
   $('#k-costs-sub').textContent = `Includes ${t.overheadPercent}% overhead`;
   $('#k-ptd').textContent = money(t.profitToDate);
   $('#k-ptd').classList.toggle('neg', t.profitToDate < 0);
-  $('#k-ptd-sub').textContent = `Margin ${pct(t.marginToDate)} · Projected ${money(t.profit)}`;
+  const f = Calc.forecast(j);
+  $('#k-ptd-sub').textContent = f.ready
+    ? `Margin ${pct(t.marginToDate)} · Forecast ${money(f.profit)}`
+    : `Margin ${pct(t.marginToDate)} · Contract profit ${money(t.profit)}`;
 
   $('#b-labour').textContent = money(t.labour);
   $('#b-equipment').textContent = money(t.equipment);
@@ -347,6 +351,15 @@ function updateTotals() {
   $('#b-ptd').textContent = money(t.profitToDate);
   $('#b-ptd').classList.toggle('neg', t.profitToDate < 0);
   $('#b-margin-td').textContent = pct(t.marginToDate);
+  for (const r of $$('.fc-ready')) r.hidden = !f.ready;
+  for (const r of $$('.fc-missing')) r.hidden = f.ready;
+  $('#b-fc-days').textContent = f.ready ? `(${fmtDays(f.daysRemaining)} left)` : '';
+  $('#b-fc-profit').textContent = money(f.profit);
+  $('#b-fc-profit').classList.toggle('neg', f.profit < 0);
+  $('#b-fc-margin').textContent = pct(f.margin);
+  $('#nav-forecast').textContent = f.ready ? `Forecast ${money(f.profit)}` : 'Enter days worked';
+  $('#nav-forecast').classList.toggle('neg', f.ready && f.profit < 0);
+  renderForecast(t, f);
 
   // Progress Draws screen
   $('#d-contract').textContent = money(t.totalContract);
@@ -398,6 +411,46 @@ function renderSplit(t) {
   }
 }
 
+function fmtDays(n) {
+  const v = Calc.round(n, 2);
+  return `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })} day${v === 1 ? '' : 's'}`;
+}
+
+function renderForecast(t, f) {
+  const set = (id, text, neg) => { const e = $(id); e.textContent = text; e.classList.toggle('neg', !!neg); };
+  const dash = '—';
+  set('#fc-costs', f.ready ? money(f.totalCosts) : dash);
+  set('#fc-complete', f.ready ? money(f.costToComplete) : dash);
+  set('#fc-profit', f.ready ? money(f.profit) : dash, f.ready && f.profit < 0);
+  set('#fc-margin', f.ready ? Calc.formatPercent(f.margin) : dash, f.ready && f.margin < 0);
+  $('#fc-basis').textContent = f.ready
+    ? `So far: ${money(t.labour)} labour + ${money(t.equipment)} equipment over ${fmtDays(f.daysWorked)} = ${money(f.perDay)} per day `
+      + `(${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). `
+      + `Forecast covers ${fmtDays(f.totalDays)} in total. Materials are not extrapolated, so add any you still expect to buy.`
+    : 'Enter the number of days worked so far and the days you expect are left. Labour and equipment are carried forward at the same cost per day.';
+  $('#fc-rem-head').textContent = f.ready ? `Remaining (${fmtDays(f.daysRemaining)})` : 'Remaining';
+
+  const cell = (v, show = true) => el('td', { text: show && f.ready ? money(v) : (show ? dash : '') });
+  const row = (label, a, b, c, cls = '', showB = true) => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: money(a) }), cell(b, showB), cell(c)]);
+  const pctOf = `Overhead (${t.overheadPercent}%)`;
+  const profitRow = el('tr', { class: 'total profit-row' }, [
+    el('th', { text: 'Profit' }), el('td', { text: money(t.profit), class: t.profit < 0 ? 'neg' : '' }), el('td'),
+    el('td', { text: f.ready ? money(f.profit) : dash, class: f.ready && f.profit < 0 ? 'neg' : '' }),
+  ]);
+  $('#fc-body').replaceChildren(
+    row('Labour', t.labour, f.labourRemaining, f.labour),
+    row('Equipment', t.equipment, f.equipmentRemaining, f.equipment),
+    row('Material and Supplier', t.materials, f.materialsRemaining, f.materials),
+    row('Total', t.subtotal, f.remainingSubtotal, f.subtotal, 'subtotal'),
+    row(pctOf, t.overhead, f.overheadRemaining, f.overhead),
+    row('Total Costs', t.totalCosts, f.costToComplete, f.totalCosts, 'total'),
+    el('tr', { class: 'spacer' }, el('td', { colspan: 4 })),
+    el('tr', {}, [el('th', { text: 'Total Contract Value' }), el('td', { text: money(t.totalContract) }), el('td'), el('td', { text: money(t.totalContract) })]),
+    profitRow,
+    el('tr', {}, [el('th', { text: 'Margin' }), el('td', { text: Calc.formatPercent(t.margin) }), el('td'), el('td', { text: f.ready ? Calc.formatPercent(f.margin) : dash })]),
+  );
+}
+
 function renderSuppliers() {
   const list = Calc.supplierTotals(state.job.materials);
   const table = $('#supplierTotals');
@@ -417,6 +470,11 @@ function renderFields() {
   for (const input of $$('[data-field]')) input.value = state.job[input.dataset.field] || '';
   $('#jobNameTop').value = state.job.jobName || '';
   $('#overheadPercent').value = state.job.overheadPercent;
+  for (const input of $$('[data-fc]')) {
+    const v = state.job[input.dataset.fc];
+    input.value = input.dataset.fc === 'materialsRemaining' && !isEmpty(v) && !isBadAmount(v) ? formatInput(v) : (v ?? '');
+    input.classList.toggle('invalid', input.dataset.fc === 'materialsRemaining' && isBadAmount(v));
+  }
 }
 
 function renderAll() {
@@ -452,6 +510,25 @@ function buildReport() {
   ].filter(([, v]) => String(v || '').trim()).map(([k, v]) => el('div', {}, [el('b', { text: `${k}: ` }), v]));
 
   const suppliers = Calc.supplierTotals(j.materials);
+  const f = Calc.forecast(j);
+  const fline = (label, a, b, c, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { class: 'm', text: a }), el('td', { class: 'm', text: b }), el('td', { class: 'm', text: c })]);
+  const forecastSection = f.ready ? el('div', { class: 'r-section r-keep' }, [
+    el('h3', {}, ['Profit Forecast', el('span', { class: 'muted r-hint', text: ` (${fmtDays(f.daysWorked)} worked, ${fmtDays(f.daysRemaining)} remaining)` })]),
+    el('p', { class: 'r-basis muted', text: `Labour and equipment carried forward at ${money(f.perDay)} per day (${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). Materials still to buy: ${money(f.materialsRemaining)}.` }),
+    el('table', { class: 'r-forecast' }, [
+      el('thead', {}, el('tr', {}, ['', 'To Date', 'Remaining', 'At Completion'].map((h, i) => el('th', { class: i ? 'm' : '', text: h })))),
+      el('tbody', {}, [
+        fline('Labour', money(t.labour), money(f.labourRemaining), money(f.labour)),
+        fline('Equipment', money(t.equipment), money(f.equipmentRemaining), money(f.equipment)),
+        fline('Material and Supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
+        fline(`Overhead (${t.overheadPercent}%)`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
+        fline('Total Costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'b'),
+        fline('Total Contract Value', money(t.totalContract), '', money(t.totalContract)),
+        fline('Profit', money(t.profit), '', money(f.profit), 'b'),
+        fline('Margin', Calc.formatPercent(t.margin), '', Calc.formatPercent(f.margin)),
+      ]),
+    ]),
+  ]) : null;
   const dated = [{ key: 'date', label: 'Date(s)' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true }];
 
   r.replaceChildren(...[
@@ -469,16 +546,21 @@ function buildReport() {
         line('Total Costs', money(t.totalCosts), 'b'),
         line('Original Contract Value', money(t.originalContract), 'gap'),
         line('Total Contract Value', money(t.totalContract), 'b'),
-        line('Projected Profit (contract − costs)', money(t.profit), `b gap${t.profit < 0 ? ' neg' : ''}`),
-        line('Projected Margin', Calc.formatPercent(t.margin)),
+        line('Contract Profit (costs to date)', money(t.profit), `b gap${t.profit < 0 ? ' neg' : ''}`),
+        line('Contract Margin', Calc.formatPercent(t.margin)),
         line(`Draws Submitted (${t.drawCount})`, money(t.draws), 'gap'),
         line('Billed to Date (% of contract)', Calc.formatPercent(t.billedPercent)),
         line('Remaining to Bill', money(t.remainingToBill)),
         line('Profit to Date (draws − costs)', money(t.profitToDate), `b big${t.profitToDate < 0 ? ' neg' : ''}`),
         line('Margin on Draws', Calc.formatPercent(t.marginToDate)),
+        ...(f.ready ? [
+          line(`Forecast Profit at Completion (${fmtDays(f.daysRemaining)} left)`, money(f.profit), `b big gap${f.profit < 0 ? ' neg' : ''}`),
+          line('Forecast Margin', Calc.formatPercent(f.margin)),
+        ] : []),
         line('Change Orders (not included)', money(t.changeOrders), 'gap muted'),
       ])),
     ]),
+    forecastSection,
     rowsTable('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
     rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }], '(not included in the contract value)'),
     rowsTable('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw #' }, { key: 'date', label: 'Date Submitted' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
@@ -510,6 +592,8 @@ function serialize() {
   const j = JSON.parse(JSON.stringify(state.job));
   for (const key of Object.keys(TABLES)) for (const r of j[key]) r.amount = isEmpty(r.amount) ? '' : Calc.money(r.amount);
   j.overheadPercent = Calc.num(j.overheadPercent);
+  for (const k of ['daysWorked', 'daysRemaining']) j[k] = isEmpty(j[k]) ? '' : Calc.days(j[k]);
+  j.materialsRemaining = isEmpty(j.materialsRemaining) ? '' : Calc.money(j.materialsRemaining);
   j.savedAt = new Date().toISOString();
   return j;
 }
@@ -603,6 +687,21 @@ function init() {
     markDirty();
     updateTotals();
   });
+
+  for (const input of $$('[data-fc]')) {
+    const money = input.dataset.fc === 'materialsRemaining';
+    input.addEventListener('input', () => {
+      state.job[input.dataset.fc] = input.value;
+      if (money) input.classList.toggle('invalid', isBadAmount(input.value));
+      markDirty();
+      updateTotals();
+    });
+    if (money) {
+      input.addEventListener('focus', () => { if (!isBadAmount(input.value)) input.value = isEmpty(state.job.materialsRemaining) ? '' : String(Calc.num(state.job.materialsRemaining)); input.select(); });
+      input.addEventListener('blur', () => { if (!isBadAmount(input.value)) input.value = formatInput(state.job.materialsRemaining); });
+    }
+  }
+  for (const a of $$('[data-goto]')) a.addEventListener('click', e => { e.preventDefault(); switchTab(a.dataset.goto); });
 
   window.api.onMenu(run);
   window.api.onRequestClose(async () => {

@@ -136,6 +136,19 @@ button.primary:hover { filter: brightness(1.05); }
 .breakdown tr.section + tr th, .breakdown tr.section + tr td { border-top: 0; }
 .breakdown .hint { font-weight: 400; }
 
+/* Profit Forecast screen */
+.fc-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.fc-inputs label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.fc-inputs input { font-size: 15px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; background: #fff; }
+.fc-inputs input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fc-inputs input.invalid { border-color: var(--neg); background: #fdecea; }
+.fc-basis { margin: 12px 0 0; line-height: 1.5; }
+.fc-table { min-width: 560px; }
+.fc-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--line-strong); }
+.fc-table thead th:first-child { text-align: left; }
+.fc-table td { width: 22%; }
+.breakdown a { color: var(--accent); }
+
 /* Progress Draws screen */
 .draw-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .stat { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -240,6 +253,7 @@ button.icon.danger:hover { color: var(--neg); background: #fdecea; }
 }
 @media (max-width: 1050px) {
   .grid-2, .grid-materials { grid-template-columns: 1fr; }
+  .fc-inputs { grid-template-columns: 1fr; }
   .draw-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -262,6 +276,10 @@ button.icon.danger:hover { color: var(--neg); background: #fdecea; }
   .report .r-total td { font-weight: 700; border-top: 1px solid #999; border-bottom: 0; }
   .report .m { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .report .r-summary { width: 60%; }
+  .report .r-basis { margin: 0 0 6px; }
+  .report .r-forecast tbody th { font-weight: 400; }
+  .report .r-forecast tr.b th, .report .r-forecast tr.b td { font-weight: 700; border-top: 1px solid #999; }
+  .report .r-forecast tr.neg td { color: #b00020; }
   .report .r-summary th { font-weight: 400; }
   .report .r-summary tr.b th, .report .r-summary tr.b td { font-weight: 700; border-top: 1px solid #999; }
   .report .r-summary tr.gap th, .report .r-summary tr.gap td { padding-top: 12px; }

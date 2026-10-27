@@ -19,6 +19,9 @@ const job = {
   ],
   labour: [{ date: 'Mar 3 - Mar 7', description: 'Framing crew', amount: 9000 }],
   equipment: [{ date: 'Mar 4', description: 'Scissor lift', amount: 650 }],
+  daysWorked: 20,
+  daysRemaining: 12.5,
+  materialsRemaining: 1500,
   materials: [
     { supplier: 'Lumber Co', invoiceNumber: 'INV-1', amount: 7000, notes: '' },
     { supplier: 'Roof Supply', invoiceNumber: 'R-22', amount: 4200.5, notes: 'Shingles' },
@@ -41,9 +44,13 @@ test('export uses the template sheet names and live formulas', async () => {
   assert.strictEqual(tb.getCell('B2').value.formula, "'Labour'!B3");
   assert.strictEqual(tb.getCell('B9').value.result, t.totalCosts);
   const rowOf = label => [...Array(tb.rowCount).keys()].map(i => i + 1).find(r => tb.getCell(r, 1).value === label);
-  assert.strictEqual(tb.getCell(rowOf('Projected Profit (Contract - Costs)'), 2).value.result, t.profit);
+  assert.strictEqual(tb.getCell(rowOf('Contract Profit (Costs to Date)'), 2).value.result, t.profit);
   assert.strictEqual(tb.getCell(rowOf('Draws Submitted'), 2).value.formula, "'Progress Draws'!D4");
   assert.strictEqual(tb.getCell(rowOf('Profit to Date (Draws - Costs)'), 2).value.result, t.profitToDate);
+  const f = Calc.forecast(job);
+  assert.strictEqual(tb.getCell(rowOf('Days Worked to Date'), 2).value, 20);
+  assert.match(tb.getCell(rowOf('Remaining Labour'), 2).value.formula, /^IF\(B\d+>0,ROUND\(B2\*B\d+\/B\d+,2\),0\)$/);
+  assert.strictEqual(tb.getCell(rowOf('Forecast Profit at Completion'), 2).value.result, f.profit);
 });
 
 test('export then import round-trips the job', async () => {
@@ -59,6 +66,8 @@ test('export then import round-trips the job', async () => {
   assert.deepStrictEqual(back.equipment, job.equipment);
   assert.deepStrictEqual(back.materials, job.materials);
   assert.deepStrictEqual(Calc.totals(back), Calc.totals(job));
+  assert.deepStrictEqual([back.daysWorked, back.daysRemaining, back.materialsRemaining], [20, 12.5, 1500]);
+  assert.deepStrictEqual(Calc.forecast(back), Calc.forecast(job));
 });
 
 test('imports a filled-in copy of the original Basic Tracker template', async () => {
@@ -165,4 +174,12 @@ test('draw numbers are written as numbers and read back as text', async () => {
   assert.strictEqual(ws.getCell('A3').value, '4A');
   const back = await importWorkbook(file);
   assert.deepStrictEqual(back.draws.map(d => d.drawNumber), ['3', '4A']);
+});
+
+test('forecast inputs left blank stay blank through Excel', async () => {
+  const file = tmp('nofc.xlsx');
+  await exportWorkbook({ ...Calc.newJob(), labour: [{ date: 'x', amount: 100 }] }, file);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual([back.daysWorked, back.daysRemaining, back.materialsRemaining], ['', '', '']);
+  assert.strictEqual(Calc.forecast(back).ready, false);
 });

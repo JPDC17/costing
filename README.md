@@ -11,6 +11,7 @@ The app has one screen per sheet in the template, plus Progress Draws:
 | --- | --- | --- |
 | Quotes & Change Orders | Approved Quotes | Quote / change order, Total, Notes |
 | Progress Draws | Progress Draws *(added by the app)* | Draw #, Date Submitted, Description, Amount, Notes |
+| Profit Forecast | Total Breakdown *(forecast section)* | Days worked, days remaining, materials still to buy |
 | Labour | Labour | Date(s), Description, Amount |
 | Equipment | Equipment | Date(s), Description, Amount |
 | Materials & Suppliers | Material and Supplier Invoices | Name, Invoice Number, Amount, Notes, plus totals per company |
@@ -23,8 +24,8 @@ Total             = Labour + Equipment + Material and Supplier
 Overhead          = Total × overhead %        (12% by default, editable per job)
 Total Costs       = Total + Overhead
 Total Contract    = Approved Quotes
-Projected Profit  = Total Contract − Total Costs
-Projected Margin  = Projected Profit ÷ Total Contract
+Contract Profit   = Total Contract − Total Costs (costs to date)
+Contract Margin   = Contract Profit ÷ Total Contract
 ```
 
 Progress draws show what you've actually billed so far:
@@ -37,12 +38,32 @@ Profit to Date    = Draws Submitted − Total Costs
 Margin on Draws   = Profit to Date ÷ Draws Submitted
 ```
 
-Profit to Date is the main profit figure on the Summary. Projected Profit is what the
-job makes once the whole contract has been billed. Draw amounts are the gross amount
+Profit to Date is the main profit figure on the Summary. Contract Profit is what the
+job would make if the whole contract were billed and no more costs came in. Draw amounts are the gross amount
 of each billing as submitted (before any holdback).
 
 As in the template, change orders are tracked on their own and are **not** added
 to the Total Contract Value. Their total is shown separately on the Summary.
+
+### Profit forecast
+
+Enter the days worked so far and the days you expect are left (part days are fine).
+The forecast carries labour and equipment forward at the same cost per day:
+
+```
+Labour per Day          = Labour to date ÷ Days Worked
+Remaining Labour        = Labour to date × Days Remaining ÷ Days Worked   (rounded to the cent)
+Remaining Equipment     = the same, for equipment
+Forecast Total Costs    = (costs to date + remaining labour + remaining equipment
+                           + materials still to buy) + overhead
+Cost to Complete        = Forecast Total Costs − Total Costs to date
+Forecast Profit         = Total Contract − Forecast Total Costs
+Forecast Margin         = Forecast Profit ÷ Total Contract
+```
+
+Materials aren't spread over days, since deliveries are lumpy. Enter any you still expect
+to buy in **Materials still to buy**. In the Excel export the three forecast inputs
+are shaded cells: change them in Excel and the forecast recalculates.
 
 ## Features
 

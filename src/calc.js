@@ -59,6 +59,10 @@
       address: '',
       notes: '',
       overheadPercent: DEFAULT_OVERHEAD_PERCENT,
+      // Profit forecast inputs
+      daysWorked: '',
+      daysRemaining: '',
+      materialsRemaining: '',
       quotes: [],
       changeOrders: [],
       draws: [],
@@ -135,6 +139,48 @@
     };
   }
 
+  // Days can't be negative; anything that isn't a number counts as 0.
+  function days(v) {
+    const n = num(v);
+    return n > 0 ? n : 0;
+  }
+
+  // Profit forecast: carry the labour and equipment cost per day forward over the
+  // days left, add any materials still to buy, then apply overhead as usual.
+  function forecast(job) {
+    const j = normalizeJob(job);
+    const t = totals(j);
+    const daysWorked = days(j.daysWorked);
+    const daysRemaining = days(j.daysRemaining);
+    const materialsRemaining = money(j.materialsRemaining);
+    const ready = daysWorked > 0;
+    // Same order of operations as the Excel formula ROUND(cost*remaining/worked, 2).
+    const ahead = cost => (ready ? round2(cost * daysRemaining / daysWorked) : 0);
+    const labourPerDay = ready ? t.labour / daysWorked : 0;
+    const equipmentPerDay = ready ? t.equipment / daysWorked : 0;
+    const labourRemaining = ahead(t.labour);
+    const equipmentRemaining = ahead(t.equipment);
+    const labour = round2(t.labour + labourRemaining);
+    const equipment = round2(t.equipment + equipmentRemaining);
+    const materials = round2(t.materials + materialsRemaining);
+    const subtotal = round2(labour + equipment + materials);
+    const overhead = round2(subtotal * t.overheadPercent / 100);
+    const totalCosts = round2(subtotal + overhead);
+    const profit = round2(t.totalContract - totalCosts);
+    return {
+      ready, daysWorked, daysRemaining, totalDays: daysWorked + daysRemaining,
+      labourPerDay, equipmentPerDay, perDay: labourPerDay + equipmentPerDay,
+      labourRemaining, equipmentRemaining, materialsRemaining,
+      remainingSubtotal: round2(labourRemaining + equipmentRemaining + materialsRemaining),
+      overheadRemaining: round2(overhead - t.overhead),
+      costToComplete: round2(totalCosts - t.totalCosts),
+      labour, equipment, materials, subtotal, overhead, totalCosts,
+      totalContract: t.totalContract,
+      profit,
+      margin: t.totalContract ? profit / t.totalContract * 100 : 0,
+    };
+  }
+
   // e.g. 67.5516 -> "67.6%"
   function formatPercent(n) {
     return `${round(num(n), 1).toFixed(1)}%`;
@@ -146,5 +192,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, num, round, round2, money, sum, isBlankRow, newJob, normalizeJob, supplierTotals, totals, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, num, round, round2, money, sum, isBlankRow, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

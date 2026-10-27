@@ -54,6 +54,48 @@ test('older job files without draws still load', () => {
   assert.deepStrictEqual(Calc.normalizeJob(old).draws, []);
 });
 
+test('forecast projects labour and equipment per day over the days left', () => {
+  const f = Calc.forecast({
+    overheadPercent: 12, quotes: [{ amount: 100000 }],
+    labour: [{ amount: 20000 }], equipment: [{ amount: 5000 }], materials: [{ amount: 10000 }],
+    daysWorked: 10, daysRemaining: 5, materialsRemaining: '2,000',
+  });
+  // 20,000 / 10 days = 2,000/day x 5 = 10,000 more labour; 5,000 / 10 x 5 = 2,500 more equipment
+  assert.strictEqual(f.labourPerDay, 2000);
+  assert.strictEqual(f.equipmentPerDay, 500);
+  assert.strictEqual(f.labourRemaining, 10000);
+  assert.strictEqual(f.equipmentRemaining, 2500);
+  assert.strictEqual(f.subtotal, 49500); // 30,000 + 7,500 + 12,000
+  assert.strictEqual(f.overhead, 5940);
+  assert.strictEqual(f.totalCosts, 55440);
+  assert.strictEqual(f.costToComplete, 16240); // 55,440 - 39,200 costs to date
+  assert.strictEqual(f.profit, 44560);
+  assert.strictEqual(Calc.formatPercent(f.margin), '44.6%');
+  assert.strictEqual(f.totalDays, 15);
+});
+
+test('forecast handles part days and rounds each remaining cost to the cent', () => {
+  const f = Calc.forecast({ overheadPercent: 0, labour: [{ amount: 1000 }], daysWorked: 3, daysRemaining: 2.5 });
+  assert.strictEqual(f.labourRemaining, 833.33); // 1000 x 2.5 / 3 = 833.333...
+  assert.strictEqual(f.labour, 1833.33);
+});
+
+test('forecast needs days worked; bad or negative days count as 0', () => {
+  assert.strictEqual(Calc.forecast({ labour: [{ amount: 500 }] }).ready, false);
+  assert.strictEqual(Calc.forecast({ labour: [{ amount: 500 }], daysWorked: -4, daysRemaining: 3 }).ready, false);
+  const f = Calc.forecast({ labour: [{ amount: 500 }], daysWorked: '5', daysRemaining: 'abc', overheadPercent: 0 });
+  assert.strictEqual(f.ready, true);
+  assert.strictEqual(f.daysRemaining, 0);
+  assert.strictEqual(f.totalCosts, 500); // nothing left to do: forecast = costs to date
+});
+
+test('with no days left and nothing more to buy, the forecast equals the contract profit', () => {
+  const t = Calc.totals(job);
+  const f = Calc.forecast({ ...job, daysWorked: 8, daysRemaining: 0 });
+  assert.strictEqual(f.totalCosts, t.totalCosts);
+  assert.strictEqual(f.profit, t.profit);
+});
+
 test('overhead percent is configurable and defaults to 12', () => {
   assert.strictEqual(Calc.newJob().overheadPercent, 12);
   assert.strictEqual(Calc.totals({ ...job, overheadPercent: 0 }).overhead, 0);
