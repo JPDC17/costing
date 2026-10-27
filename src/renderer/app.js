@@ -280,8 +280,20 @@ function addRow(key, focusCol = 0) {
   if (key === 'draws') row.drawNumber = String(nextDrawNumber());
   state.job[key].push(row);
   markDirty();
-  renderTable(key);
+  // Add just the new row (redrawing a long table on every add is slow).
+  const tbody = document.querySelector(`[data-table="${key}"] tbody`);
+  if (tbody && !tbody.querySelector('tr.empty')) {
+    tbody.append(renderRow(key, row, state.job[key].length - 1));
+    updateTotals();
+  } else {
+    renderTable(key);
+  }
   focusCell(key, state.job[key].length - 1, focusCol);
+}
+
+// Refresh the row numbers in the # column after a row is removed.
+function renumber(key) {
+  document.querySelectorAll(`[data-table="${key}"] tbody td.num`).forEach((td, i) => { td.textContent = String(i + 1); });
 }
 
 // One more than the highest draw number used so far.
@@ -296,7 +308,14 @@ function deleteRow(key, id) {
   if (idx < 0) return;
   const [removed] = rows.splice(idx, 1);
   markDirty();
-  renderTable(key);
+  const tr = document.querySelector(`[data-table="${key}"] tbody tr[data-id="${CSS.escape(id)}"]`);
+  if (tr && rows.length) {
+    tr.remove();
+    renumber(key);
+    updateTotals();
+  } else {
+    renderTable(key);
+  }
   toast('Row deleted', {
     label: 'Undo',
     run: () => {
@@ -430,24 +449,24 @@ function renderForecast(t, f) {
     : 'Enter the number of days worked so far and the days you expect are left. Labour and equipment are carried forward at the same cost per day.';
   $('#fc-rem-head').textContent = f.ready ? `Remaining (${fmtDays(f.daysRemaining)})` : 'Remaining';
 
-  const cell = (v, show = true) => el('td', { text: show && f.ready ? money(v) : (show ? dash : '') });
-  const row = (label, a, b, c, cls = '', showB = true) => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: money(a) }), cell(b, showB), cell(c)]);
-  const pctOf = `Overhead (${t.overheadPercent}%)`;
-  const profitRow = el('tr', { class: 'total profit-row' }, [
-    el('th', { text: 'Profit' }), el('td', { text: money(t.profit), class: t.profit < 0 ? 'neg' : '' }), el('td'),
-    el('td', { text: f.ready ? money(f.profit) : dash, class: f.ready && f.profit < 0 ? 'neg' : '' }),
+  const cell = v => el('td', { text: f.ready ? money(v) : dash });
+  const row = (label, a, b, c, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: money(a) }), cell(b), cell(c)]);
+  // Contract, profit and margin only make sense at completion, so the To Date and
+  // Remaining columns are left empty (Profit to Date from draws is on the Summary).
+  const atEnd = (label, text, cls = '', neg = false) => el('tr', { class: cls }, [
+    el('th', { text: label }), el('td'), el('td'), el('td', { text, class: neg ? 'neg' : '' }),
   ]);
   $('#fc-body').replaceChildren(
     row('Labour', t.labour, f.labourRemaining, f.labour),
     row('Equipment', t.equipment, f.equipmentRemaining, f.equipment),
     row('Material and Supplier', t.materials, f.materialsRemaining, f.materials),
     row('Total', t.subtotal, f.remainingSubtotal, f.subtotal, 'subtotal'),
-    row(pctOf, t.overhead, f.overheadRemaining, f.overhead),
+    row(`Overhead (${t.overheadPercent}%)`, t.overhead, f.overheadRemaining, f.overhead),
     row('Total Costs', t.totalCosts, f.costToComplete, f.totalCosts, 'total'),
     el('tr', { class: 'spacer' }, el('td', { colspan: 4 })),
-    el('tr', {}, [el('th', { text: 'Total Contract Value' }), el('td', { text: money(t.totalContract) }), el('td'), el('td', { text: money(t.totalContract) })]),
-    profitRow,
-    el('tr', {}, [el('th', { text: 'Margin' }), el('td', { text: Calc.formatPercent(t.margin) }), el('td'), el('td', { text: f.ready ? Calc.formatPercent(f.margin) : dash })]),
+    atEnd('Total Contract Value', money(t.totalContract)),
+    atEnd('Forecast Profit', f.ready ? money(f.profit) : dash, 'total profit-row', f.ready && f.profit < 0),
+    atEnd('Forecast Margin', f.ready ? Calc.formatPercent(f.margin) : dash),
   );
 }
 
@@ -461,9 +480,15 @@ function renderSuppliers() {
   table.replaceChildren(body);
 
   // Supplier autocomplete for the invoice "Name" column.
+  // Only rebuild it when the names change: rebuilding is slow on long invoice lists.
   let dl = document.getElementById('suppliers');
   if (!dl) { dl = el('datalist', { id: 'suppliers' }); document.body.append(dl); }
-  dl.replaceChildren(...list.filter(s => s.supplier !== '(No supplier)').map(s => el('option', { value: s.supplier })));
+  const names = list.filter(s => !s.blank).map(s => s.supplier);
+  const sig = names.join('\n');
+  if (dl.dataset.sig !== sig) {
+    dl.dataset.sig = sig;
+    dl.replaceChildren(...names.map(n => el('option', { value: n })));
+  }
 }
 
 function renderFields() {
@@ -523,9 +548,9 @@ function buildReport() {
         fline('Material and Supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
         fline(`Overhead (${t.overheadPercent}%)`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
         fline('Total Costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'b'),
-        fline('Total Contract Value', money(t.totalContract), '', money(t.totalContract)),
-        fline('Profit', money(t.profit), '', money(f.profit), 'b'),
-        fline('Margin', Calc.formatPercent(t.margin), '', Calc.formatPercent(f.margin)),
+        fline('Total Contract Value', '', '', money(t.totalContract)),
+        fline('Forecast Profit', '', '', money(f.profit), 'b'),
+        fline('Forecast Margin', '', '', Calc.formatPercent(f.margin)),
       ]),
     ]),
   ]) : null;

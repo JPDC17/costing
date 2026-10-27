@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const { exportWorkbook, importWorkbook } = require('./excel');
@@ -26,24 +26,41 @@ async function writeFileSafely(target, data) {
   const tmp = `${target}.${process.pid}.tmp`;
   try {
     await fs.writeFile(tmp, data);
-    await fs.rename(tmp, target);
+    // On Windows, antivirus or backup software can lock a file for a moment; retry briefly.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await fs.rename(tmp, target);
+        break;
+      } catch (err) {
+        if (attempt >= 9 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+        await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
+      }
+    }
   } catch (err) {
     await fs.rm(tmp, { force: true }).catch(() => {});
     throw err;
   }
 }
 
+// A file name Windows will accept: no reserved characters, no trailing dots or
+// spaces, and not a reserved device name like CON or PRN.
 function safeName(name, fallback) {
-  const base = String(name || '').replace(/[\\/:*?"<>|]+/g, '').trim();
-  return base || fallback;
+  let base = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').replace(/[. ]+$/, '').trim();
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base += ' job';
+  return base.slice(0, 120) || fallback;
 }
 
 function createWindow() {
+  // Fit the window to the screen, so small or scaled laptop screens (e.g. 1366x768
+  // at 125%) don't get a window taller than the screen.
+  const area = screen.getPrimaryDisplay().workAreaSize;
+  const width = Math.min(1280, area.width);
+  const height = Math.min(860, area.height);
   win = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    minWidth: 900,
-    minHeight: 600,
+    width,
+    height,
+    minWidth: Math.min(900, area.width),
+    minHeight: Math.min(560, area.height),
     title: 'Job Costing',
     backgroundColor: '#f5f6f8',
     webPreferences: {
@@ -53,6 +70,7 @@ function createWindow() {
       sandbox: true,
     },
   });
+  if (area.width < 1100 || area.height < 700) win.maximize();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // Never navigate away from the app; open external links in the browser.

@@ -15,7 +15,7 @@ The app has one screen per sheet in the template, plus Progress Draws:
 | Labour | Labour | Date(s), Description, Amount |
 | Equipment | Equipment | Date(s), Description, Amount |
 | Materials & Suppliers | Material and Supplier Invoices | Name, Invoice Number, Amount, Notes, plus totals per company |
-| Summary | Total Breakdown | Live totals, overhead, contract value, projected profit, draws and profit to date |
+| Summary | Total Breakdown | Live totals, overhead, contract value, contract profit, draws, profit to date and the forecast |
 
 The Summary uses the same math as the template's **Total Breakdown** sheet:
 
