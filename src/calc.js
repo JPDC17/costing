@@ -19,10 +19,16 @@
   }
 
   // A row the user added but never filled in. The draw number is filled in
-  // automatically, so it doesn't count.
+  // automatically and a Paid tick on its own isn't an entry, so neither counts.
   function isBlankRow(row) {
     return Object.entries(row || {}).every(([k, v]) =>
-      k === 'id' || k === 'drawNumber' || (k === 'amount' ? !num(v) : !String(v ?? '').trim()));
+      k === 'id' || k === 'drawNumber' || k === 'paid' || (k === 'amount' ? !num(v) : !String(v ?? '').trim()));
+  }
+
+  // Ticked as paid. Accepts true and the text forms an Excel sheet might hold.
+  function isPaid(row) {
+    const v = row && row.paid;
+    return v === true || /^(yes|y|paid|true|x|✓)$/i.test(String(v ?? '').trim());
   }
 
   // Round to cents the way Excel's ROUND(x, 2) does: halves go away from zero, and
@@ -130,12 +136,20 @@
     const remainingToBill = round2(totalContract - draws);
     const profitToDate = round2(draws - totalCosts);
     const marginToDate = draws ? profitToDate / draws * 100 : 0;
+    // Payments: profit above counts everything billed or received; these track the cash.
+    const drawsPaid = sum(j.draws.filter(isPaid));
+    const drawsOutstanding = round2(draws - drawsPaid);
+    const drawsPaidCount = j.draws.filter(d => isPaid(d) && !isBlankRow(d)).length;
+    const materialsPaid = sum(j.materials.filter(isPaid));
+    const materialsUnpaid = round2(materials - materialsPaid);
+    const materialsUnpaidCount = j.materials.filter(m => !isPaid(m) && !isBlankRow(m)).length;
     return {
       labour, equipment, materials, subtotal,
       overheadPercent, overhead, totalCosts,
       originalContract, changeOrders, totalContract,
       profit, margin,
       draws, drawCount, billedPercent, remainingToBill, profitToDate, marginToDate,
+      drawsPaid, drawsOutstanding, drawsPaidCount, materialsPaid, materialsUnpaid, materialsUnpaidCount,
     };
   }
 
@@ -192,5 +206,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, num, round, round2, money, sum, isBlankRow, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

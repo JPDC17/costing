@@ -27,7 +27,8 @@ const TABLES = {
       { key: 'date', label: 'Date Submitted', type: 'text', placeholder: 'e.g. 2026-03-31', width: '17%' },
       { key: 'description', label: 'Description', type: 'text', placeholder: 'e.g. March progress – framing 60%', width: '34%' },
       { key: 'amount', label: 'Amount', type: 'money' },
-      { key: 'notes', label: 'Notes', type: 'text', placeholder: 'e.g. Paid Apr 15' },
+      { key: 'paid', label: 'Paid', type: 'check', title: 'Tick when the client has paid this draw' },
+      { key: 'notes', label: 'Notes', type: 'text', placeholder: 'e.g. Cheque #1042' },
     ],
   },
   labour: {
@@ -49,9 +50,10 @@ const TABLES = {
   materials: {
     empty: 'No invoices yet.',
     cols: [
-      { key: 'supplier', label: 'Name', type: 'text', placeholder: 'Supplier', list: 'suppliers', width: '30%' },
-      { key: 'invoiceNumber', label: 'Invoice Number', type: 'text', width: '17%' },
+      { key: 'supplier', label: 'Name', type: 'text', placeholder: 'Supplier', list: 'suppliers', width: '26%' },
+      { key: 'invoiceNumber', label: 'Invoice Number', type: 'text', width: '15%' },
       { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'paid', label: 'Paid', type: 'check', title: 'Tick when you have paid this invoice' },
       { key: 'notes', label: 'Notes', type: 'text' },
     ],
   },
@@ -152,7 +154,7 @@ function renderTable(key) {
   const idx = !def.hideIndex;
   const thead = el('thead', {}, el('tr', {}, [
     idx ? el('th', { class: 'num', text: '#' }) : null,
-    ...def.cols.map(c => el('th', { class: c.type === 'money' ? 'money' : '', text: c.label })),
+    ...def.cols.map(c => el('th', { class: c.type === 'money' ? 'money' : c.type === 'check' ? 'check' : '', text: c.label, title: c.title })),
     el('th', { class: 'act' }),
   ]));
 
@@ -167,6 +169,7 @@ function renderTable(key) {
     idx ? el('td') : null,
     ...def.cols.map((c, i) => {
       if (i === moneyIdx) return el('td', { class: 'money', 'data-total': key });
+      if (c.type === 'check') return el('td', { class: 'check paid-count', 'data-paidcount': key });
       if (i === 0) return el('td', { text: 'Total' });
       return el('td');
     }),
@@ -177,7 +180,7 @@ function renderTable(key) {
   const colgroup = el('colgroup', {}, [
     idx ? el('col', { class: 'c-num' }) : null,
     ...def.cols.map(c => {
-      const col = el('col', { class: c.type === 'money' ? 'c-money' : '' });
+      const col = el('col', { class: c.type === 'money' ? 'c-money' : c.type === 'check' ? 'c-check' : '' });
       if (c.width) col.style.width = c.width;
       return col;
     }),
@@ -194,6 +197,20 @@ function renderRow(key, row, i) {
   const tr = el('tr', { 'data-id': row.id });
   if (!def.hideIndex) tr.append(el('td', { class: 'num', text: String(i + 1) }));
   def.cols.forEach((c, ci) => {
+    if (c.type === 'check') {
+      const box = el('input', { type: 'checkbox', 'aria-label': `${c.label} (row ${i + 1})`, title: c.title });
+      box.checked = Calc.isPaid(row);
+      tr.classList.toggle('is-paid', box.checked);
+      box.addEventListener('change', () => {
+        row[c.key] = box.checked;
+        tr.classList.toggle('is-paid', box.checked);
+        markDirty();
+        updateTotals();
+      });
+      box.addEventListener('keydown', e => onCellKey(e, key, row, ci));
+      tr.append(el('td', { class: 'check' }, box));
+      return;
+    }
     const input = el('input', {
       type: 'text',
       class: c.type === 'money' ? 'money' : '',
@@ -335,13 +352,20 @@ function updateTotals() {
   for (const key of Object.keys(TABLES)) {
     const cell = document.querySelector(`[data-total="${key}"]`);
     if (cell) cell.textContent = money(Calc.sum(j[key]));
+    const pc = document.querySelector(`[data-paidcount="${key}"]`);
+    if (pc) {
+      const rows = j[key].filter(r => !Calc.isBlankRow(r));
+      pc.textContent = rows.length ? `${rows.filter(Calc.isPaid).length}/${rows.length}` : '';
+      pc.title = 'Paid / total';
+    }
   }
 
   const pct = Calc.formatPercent;
   $('#k-contract').textContent = money(t.totalContract);
   $('#k-contract-sub').textContent = `Remaining to bill ${money(t.remainingToBill)}`;
   $('#k-draws').textContent = money(t.draws);
-  $('#k-draws-sub').textContent = `${pct(t.billedPercent)} of contract · ${t.drawCount} draw${t.drawCount === 1 ? '' : 's'}`;
+  $('#k-draws-sub').textContent = `${pct(t.billedPercent)} of contract · ${t.drawCount} draw${t.drawCount === 1 ? '' : 's'}`
+    + (t.drawCount ? ` · ${money(t.drawsOutstanding)} not yet paid` : '');
   $('#k-costs').textContent = money(t.totalCosts);
   $('#k-costs-sub').textContent = `Includes ${t.overheadPercent}% overhead`;
   $('#k-ptd').textContent = money(t.profitToDate);
@@ -365,6 +389,11 @@ function updateTotals() {
   $('#b-margin').textContent = pct(t.margin);
   $('#b-draw-count').textContent = `(${t.drawCount})`;
   $('#b-draws').textContent = money(t.draws);
+  $('#b-paid-count').textContent = `(${t.drawsPaidCount} of ${t.drawCount})`;
+  $('#b-draws-paid').textContent = money(t.drawsPaid);
+  $('#b-draws-out').textContent = money(t.drawsOutstanding);
+  $('#b-unpaid').textContent = money(t.materialsUnpaid);
+  $('#b-unpaid-count').textContent = `(${t.materialsUnpaidCount} invoice${t.materialsUnpaidCount === 1 ? '' : 's'})`;
   $('#b-billed').textContent = pct(t.billedPercent);
   $('#b-remaining').textContent = money(t.remainingToBill);
   $('#b-ptd').textContent = money(t.profitToDate);
@@ -387,10 +416,17 @@ function updateTotals() {
   $('#d-remaining').classList.toggle('neg', t.remainingToBill < 0);
   $('#d-ptd').textContent = money(t.profitToDate);
   $('#d-ptd').classList.toggle('neg', t.profitToDate < 0);
-  $('#d-meter').style.width = `${Math.min(Math.max(t.billedPercent, 0), 100)}%`;
+  $('#d-paid').textContent = money(t.drawsPaid);
+  $('#d-out').textContent = money(t.drawsOutstanding);
+  // Bar: paid part, then billed-but-unpaid part, as shares of the contract.
+  const clamp = v => Math.min(Math.max(v, 0), 100);
+  const paidPct = t.totalContract ? t.drawsPaid / t.totalContract * 100 : 0;
+  const billedPct = clamp(t.billedPercent);
+  $('#d-meter-paid').style.width = `${clamp(Math.min(paidPct, billedPct))}%`;
+  $('#d-meter').style.width = `${Math.max(billedPct - clamp(Math.min(paidPct, billedPct)), 0)}%`;
   $('#d-meter').classList.toggle('over', t.billedPercent > 100);
   $('#d-meter-label').textContent = t.totalContract
-    ? `${pct(t.billedPercent)} of the contract billed${t.billedPercent > 100 ? ' — draws are more than the contract value' : ''}`
+    ? `${pct(t.billedPercent)} of the contract billed, ${pct(paidPct)} paid${t.billedPercent > 100 ? ' — draws are more than the contract value' : ''}`
     : 'Enter approved quotes to see how much of the contract has been billed.';
 
   $('#nav-summary').textContent = `Profit to date ${money(t.profitToDate)}`;
@@ -478,6 +514,11 @@ function renderSuppliers() {
   for (const s of list) body.append(el('tr', {}, [el('th', { text: s.supplier }), el('td', { text: money(s.total) })]));
   body.append(el('tr', { class: 'total' }, [el('th', { text: 'Total' }), el('td', { text: money(Calc.sum(state.job.materials)) })]));
   table.replaceChildren(body);
+  const t = Calc.totals(state.job);
+  $('#unpaidBox').replaceChildren(
+    el('div', { class: 'unpaid-row' }, [el('span', { text: 'Paid' }), el('span', { text: money(t.materialsPaid) })]),
+    el('div', { class: 'unpaid-row strong' }, [el('span', { text: `Unpaid (${t.materialsUnpaidCount})` }), el('span', { text: money(t.materialsUnpaid) })]),
+  );
 
   // Supplier autocomplete for the invoice "Name" column.
   // Only rebuild it when the names change: rebuilding is slow on long invoice lists.
@@ -514,7 +555,7 @@ function buildReport() {
   const j = state.job;
   const t = Calc.totals(j);
   const r = $('#report');
-  const td = (c, text) => el('td', { class: c.money ? 'm' : '', text });
+  const td = (c, text) => el('td', { class: c.money ? 'm' : c.check ? 'c' : '', text });
   const rowsTable = (title, key, cols, hint) => {
     const rows = j[key].filter(x => !Calc.isBlankRow(x));
     return el('div', { class: 'r-section' }, [
@@ -522,9 +563,9 @@ function buildReport() {
       el('table', {}, [
         el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.money ? 'm' : '', text: c.label })))),
         el('tbody', {}, rows.length
-          ? rows.map(x => el('tr', {}, cols.map(c => td(c, c.money ? money(x[c.key]) : (x[c.key] || '')))))
+          ? rows.map(x => el('tr', {}, cols.map(c => td(c, c.money ? money(x[c.key]) : c.check ? (Calc.isPaid(x) ? 'Yes' : '') : (x[c.key] || '')))))
           : [el('tr', {}, el('td', { colspan: cols.length, class: 'muted', text: 'None' }))]),
-        el('tbody', { class: 'r-total' }, el('tr', {}, cols.map((c, i) => td(c, c.money ? money(Calc.sum(rows)) : (i === 0 ? 'Total' : ''))))),
+        el('tbody', { class: 'r-total' }, el('tr', {}, cols.map((c, i) => td(c, c.money ? money(Calc.sum(rows)) : c.check ? `${rows.filter(Calc.isPaid).length}/${rows.length}` : (i === 0 ? 'Total' : ''))))),
       ]),
     ]);
   };
@@ -574,6 +615,8 @@ function buildReport() {
         line('Contract Profit (costs to date)', money(t.profit), `b gap${t.profit < 0 ? ' neg' : ''}`),
         line('Contract Margin', Calc.formatPercent(t.margin)),
         line(`Draws Submitted (${t.drawCount})`, money(t.draws), 'gap'),
+        line(`Paid by Client (${t.drawsPaidCount} of ${t.drawCount})`, money(t.drawsPaid)),
+        line('Outstanding (not yet paid)', money(t.drawsOutstanding)),
         line('Billed to Date (% of contract)', Calc.formatPercent(t.billedPercent)),
         line('Remaining to Bill', money(t.remainingToBill)),
         line('Profit to Date (draws − costs)', money(t.profitToDate), `b big${t.profitToDate < 0 ? ' neg' : ''}`),
@@ -583,15 +626,16 @@ function buildReport() {
           line('Forecast Margin', Calc.formatPercent(f.margin)),
         ] : []),
         line('Change Orders (not included)', money(t.changeOrders), 'gap muted'),
+        line(`Unpaid Supplier Invoices (${t.materialsUnpaidCount})`, money(t.materialsUnpaid), 'muted'),
       ])),
     ]),
     forecastSection,
     rowsTable('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
     rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }], '(not included in the contract value)'),
-    rowsTable('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw #' }, { key: 'date', label: 'Date Submitted' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
+    rowsTable('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw #' }, { key: 'date', label: 'Date Submitted' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Paid', check: true }, { key: 'amount', label: 'Amount', money: true }]),
     rowsTable('Labour', 'labour', dated),
     rowsTable('Equipment', 'equipment', dated),
-    rowsTable('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Name' }, { key: 'invoiceNumber', label: 'Invoice #' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Amount', money: true }]),
+    rowsTable('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Name' }, { key: 'invoiceNumber', label: 'Invoice #' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Paid', check: true }, { key: 'amount', label: 'Amount', money: true }]),
     suppliers.length ? el('div', { class: 'r-section r-keep' }, [
       el('h3', { text: 'Company Totals' }),
       el('table', { class: 'r-summary' }, el('tbody', {}, [

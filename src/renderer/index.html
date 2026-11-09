@@ -68,6 +68,8 @@
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="section"><th colspan="2">Progress Draws</th></tr>
                 <tr><th>Draws Submitted <span class="hint" id="b-draw-count"></span></th><td id="b-draws"></td></tr>
+                <tr class="sub"><th>Paid by Client <span class="hint" id="b-paid-count"></span></th><td id="b-draws-paid"></td></tr>
+                <tr class="sub"><th>Outstanding <span class="hint">(not yet paid)</span></th><td id="b-draws-out"></td></tr>
                 <tr><th>Billed to Date <span class="hint">(% of contract)</span></th><td id="b-billed"></td></tr>
                 <tr><th>Remaining to Bill</th><td id="b-remaining"></td></tr>
                 <tr class="total profit-row"><th>Profit to Date <span class="hint">(draws − costs)</span></th><td id="b-ptd"></td></tr>
@@ -79,6 +81,7 @@
                 <tr class="fc-missing info"><th colspan="2">Enter the days worked on the <a href="#" data-goto="forecast">Profit Forecast</a> screen to see this.</th></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="info"><th>Change Orders <span class="hint">(not included)</span></th><td id="b-co"></td></tr>
+                <tr class="info"><th>Unpaid Supplier Invoices <span class="hint" id="b-unpaid-count"></span></th><td id="b-unpaid"></td></tr>
               </tbody>
             </table>
             <div class="split" id="split" aria-label="Cost split"></div>
@@ -143,13 +146,16 @@
 
       <section class="tab" id="tab-draws">
         <div class="card">
-          <div class="draw-stats">
+          <div class="draw-stats three">
             <div><div class="kpi-label">Total Contract Value</div><div class="stat" id="d-contract"></div></div>
             <div><div class="kpi-label">Draws Submitted</div><div class="stat" id="d-draws"></div></div>
             <div><div class="kpi-label">Remaining to Bill</div><div class="stat" id="d-remaining"></div></div>
             <div><div class="kpi-label">Profit to Date</div><div class="stat" id="d-ptd"></div></div>
+            <div><div class="kpi-label">Paid by Client</div><div class="stat pos" id="d-paid"></div></div>
+            <div><div class="kpi-label">Outstanding <span class="kpi-note">(billed, not yet paid)</span></div><div class="stat" id="d-out"></div></div>
           </div>
-          <div class="meter" aria-hidden="true"><div class="meter-fill" id="d-meter"></div></div>
+          <div class="meter" aria-hidden="true"><div class="meter-fill meter-paid" id="d-meter-paid"></div><div class="meter-fill" id="d-meter"></div></div>
+          <div class="meter-legend"><span><i class="meter-paid"></i>Paid</span><span><i class="meter-billed"></i>Billed, not yet paid</span></div>
           <div class="hint" id="d-meter-label"></div>
         </div>
         <div class="card">
@@ -181,6 +187,7 @@
           <div class="card">
             <h2>Company Totals</h2>
             <table class="breakdown" id="supplierTotals"></table>
+            <div class="unpaid-box" id="unpaidBox"></div>
           </div>
         </div>
       </section>

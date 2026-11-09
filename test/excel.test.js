@@ -14,8 +14,8 @@ const job = {
   quotes: [{ description: 'Quote 1 - Framing', amount: 40000, notes: 'Signed' }, { description: 'Quote 2 - Roofing', amount: 15000, notes: '' }],
   changeOrders: [{ description: 'CO-1 Extra window', amount: 1800, notes: 'Approved by email' }],
   draws: [
-    { drawNumber: '1', date: '2026-03-31', description: 'March progress', amount: 15000, notes: 'Paid' },
-    { drawNumber: '2', date: '2026-04-30', description: 'April progress', amount: 12500.25, notes: '' },
+    { drawNumber: '1', date: '2026-03-31', description: 'March progress', amount: 15000, paid: true, notes: 'Cheque 1042' },
+    { drawNumber: '2', date: '2026-04-30', description: 'April progress', amount: 12500.25, paid: false, notes: '' },
   ],
   labour: [{ date: 'Mar 3 - Mar 7', description: 'Framing crew', amount: 9000 }],
   equipment: [{ date: 'Mar 4', description: 'Scissor lift', amount: 650 }],
@@ -23,9 +23,9 @@ const job = {
   daysRemaining: 12.5,
   materialsRemaining: 1500,
   materials: [
-    { supplier: 'Lumber Co', invoiceNumber: 'INV-1', amount: 7000, notes: '' },
-    { supplier: 'Roof Supply', invoiceNumber: 'R-22', amount: 4200.5, notes: 'Shingles' },
-    { supplier: 'Lumber Co', invoiceNumber: 'INV-2', amount: 300, notes: '' },
+    { supplier: 'Lumber Co', invoiceNumber: 'INV-1', amount: 7000, notes: '', paid: true },
+    { supplier: 'Roof Supply', invoiceNumber: 'R-22', amount: 4200.5, notes: 'Shingles', paid: false },
+    { supplier: 'Lumber Co', invoiceNumber: 'INV-2', amount: 300, notes: '', paid: false },
   ],
 };
 
@@ -92,8 +92,9 @@ test('imports a filled-in copy of the original Basic Tracker template', async ()
   assert.deepStrictEqual(job2.quotes, [{ description: 'Garage build', amount: 30000, notes: '' }]);
   assert.deepStrictEqual(job2.changeOrders, [{ description: 'CO 1', amount: 1200, notes: '' }]);
   assert.deepStrictEqual(job2.labour, [{ date: 'Week 1', amount: 5000, description: '' }]);
+  // the template has no Paid column, so nothing is marked paid
   assert.strictEqual(job2.equipment[0].amount, 300);
-  assert.deepStrictEqual(job2.materials, [{ supplier: 'Lumber Co', invoiceNumber: 'L-1', amount: 2000, notes: '' }]);
+  assert.deepStrictEqual(job2.materials, [{ supplier: 'Lumber Co', invoiceNumber: 'L-1', amount: 2000, notes: '', paid: false }]);
 });
 
 // Every SUM in the export must not include its own cell (that is a circular reference).
@@ -136,7 +137,7 @@ test('export skips blank rows, matches supplier names literally, rounds overhead
   assert.strictEqual(wb.getWorksheet(SHEETS.labour).getCell('A2').value, 'a');
   const m = wb.getWorksheet(SHEETS.materials);
   assert.strictEqual(m.getCell('A6').value, 'Lumber Co');
-  assert.ok(!/SUMIF\(/.test(m.getCell('F4').value.formula));
+  assert.ok(/^SUMPRODUCT\(/.test(m.getCell('H4').value.formula)); // company totals, not SUMIF
   assert.strictEqual(wb.getWorksheet(SHEETS.breakdown).getCell('B7').value.formula, 'ROUND(B6*$D$6,2)');
 });
 
@@ -182,4 +183,45 @@ test('forecast inputs left blank stay blank through Excel', async () => {
   const back = await importWorkbook(file);
   assert.deepStrictEqual([back.daysWorked, back.daysRemaining, back.materialsRemaining], ['', '', '']);
   assert.strictEqual(Calc.forecast(back).ready, false);
+});
+
+test('paid ticks: written as Yes, summed by formula, read back', async () => {
+  const file = tmp('paid.xlsx');
+  const j = { ...Calc.newJob(), draws: [{ drawNumber: '1', amount: 1000, paid: true }, { drawNumber: '2', amount: 250.5 }],
+    materials: [{ supplier: 'A', amount: 40, paid: true }, { supplier: 'B', amount: 60 }] };
+  await exportWorkbook(j, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const d = wb.getWorksheet(SHEETS.draws);
+  assert.deepStrictEqual([d.getCell('E1').value, d.getCell('E2').value, d.getCell('E3').value], ['Paid', 'Yes', '']);
+  assert.strictEqual(d.getCell('D5').value.formula, 'SUMIF(E2:E3,"Yes",D2:D3)');
+  assert.strictEqual(d.getCell('D5').value.result, 1000);
+  assert.strictEqual(d.getCell('D6').value.result, 250.5);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(back.draws.map(x => x.paid), [true, false]);
+  assert.deepStrictEqual(back.materials.map(x => x.paid), [true, false]);
+  assert.strictEqual(Calc.totals(back).materialsUnpaid, 60);
+});
+
+test('older exports without a Paid column still import (notes in column E)', async () => {
+  const file = tmp('old.xlsx');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(SHEETS.draws);
+  ws.addRow(['Draw #', 'Date Submitted', 'Description', 'Amount', 'Notes']);
+  ws.addRow([1, '2026-03-31', 'March', 5000, 'old note']);
+  ws.addRow(['Total', null, null, 5000]);
+  await wb.xlsx.writeFile(file);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(back.draws, [{ drawNumber: '1', date: '2026-03-31', description: 'March', amount: 5000, paid: false, notes: 'old note' }]);
+});
+
+test('a Paid column typed by hand in Excel is understood (Yes, Y, x, Paid)', async () => {
+  const file = tmp('hand.xlsx');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(SHEETS.draws);
+  ws.addRow(['Draw #', 'Date Submitted', 'Description', 'Amount', 'Paid', 'Notes']);
+  ['yes', 'Y', 'x', 'Paid', 'no', ''].forEach((p, i) => ws.addRow([i + 1, '', '', 10, p, '']));
+  await wb.xlsx.writeFile(file);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(back.draws.map(x => x.paid), [true, true, true, true, false, false]);
 });

@@ -10,11 +10,11 @@ The app has one screen per sheet in the template, plus Progress Draws:
 | Screen | Template sheet | Columns |
 | --- | --- | --- |
 | Quotes & Change Orders | Approved Quotes | Quote / change order, Total, Notes |
-| Progress Draws | Progress Draws *(added by the app)* | Draw #, Date Submitted, Description, Amount, Notes |
+| Progress Draws | Progress Draws *(added by the app)* | Draw #, Date Submitted, Description, Amount, Paid, Notes |
 | Profit Forecast | Total Breakdown *(forecast section)* | Days worked, days remaining, materials still to buy |
 | Labour | Labour | Date(s), Description, Amount |
 | Equipment | Equipment | Date(s), Description, Amount |
-| Materials & Suppliers | Material and Supplier Invoices | Name, Invoice Number, Amount, Notes, plus totals per company |
+| Materials & Suppliers | Material and Supplier Invoices | Name, Invoice Number, Amount, Paid, Notes, plus totals per company |
 | Summary | Total Breakdown | Live totals, overhead, contract value, contract profit, draws, profit to date and the forecast |
 
 The Summary uses the same math as the template's **Total Breakdown** sheet:
@@ -44,6 +44,21 @@ of each billing as submitted (before any holdback).
 
 As in the template, change orders are tracked on their own and are **not** added
 to the Total Contract Value. Their total is shown separately on the Summary.
+
+### Paid tick boxes
+
+Each progress draw has a **Paid** tick box for when the client has paid it, and each
+supplier invoice has one for when you've paid it. The app totals them:
+
+```
+Paid by Client            = draws ticked Paid
+Outstanding               = Draws Submitted − Paid by Client   (billed, not yet paid)
+Unpaid Supplier Invoices  = supplier invoices not ticked Paid
+```
+
+These track cash only. Profit still counts every draw billed and every invoice received,
+paid or not. In the Excel export the Paid column says **Yes**. Type Yes in Excel to mark
+one paid and the totals update; Import reads it back (Y, x and Paid also work).
 
 ### Profit forecast
 

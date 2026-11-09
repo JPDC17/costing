@@ -96,6 +96,35 @@ test('with no days left and nothing more to buy, the forecast equals the contrac
   assert.strictEqual(f.profit, t.profit);
 });
 
+test('paid ticks: draws paid / outstanding and unpaid supplier invoices', () => {
+  const t = Calc.totals({
+    draws: [{ amount: 20000, paid: true }, { amount: '10,500.50' }, { drawNumber: '3', paid: true }],
+    materials: [{ supplier: 'A', amount: 1000, paid: true }, { supplier: 'B', amount: 499.75 }, { supplier: 'C', amount: 250 }],
+  });
+  assert.strictEqual(t.drawsPaid, 20000);
+  assert.strictEqual(t.drawsOutstanding, 10500.5);
+  assert.strictEqual(t.drawsPaidCount, 1); // a ticked but empty row isn't a draw
+  assert.strictEqual(t.materialsPaid, 1000);
+  assert.strictEqual(t.materialsUnpaid, 749.75);
+  assert.strictEqual(t.materialsUnpaidCount, 2);
+});
+
+test('paid ticks do not change profit', () => {
+  const unpaid = Calc.totals(job);
+  const allPaid = Calc.totals({ ...job, materials: job.materials.map(m => ({ ...m, paid: true })) });
+  assert.strictEqual(allPaid.profit, unpaid.profit);
+  assert.strictEqual(allPaid.totalCosts, unpaid.totalCosts);
+});
+
+test('isPaid and isBlankRow with ticks', () => {
+  assert.strictEqual(Calc.isPaid({ paid: true }), true);
+  assert.strictEqual(Calc.isPaid({ paid: 'Yes' }), true);
+  assert.strictEqual(Calc.isPaid({ paid: false }), false);
+  assert.strictEqual(Calc.isPaid({ paid: 'no' }), false);
+  assert.strictEqual(Calc.isPaid({}), false);
+  assert.strictEqual(Calc.isBlankRow({ id: 'x', drawNumber: '4', paid: true, amount: '' }), true);
+});
+
 test('overhead percent is configurable and defaults to 12', () => {
   assert.strictEqual(Calc.newJob().overheadPercent, 12);
   assert.strictEqual(Calc.totals({ ...job, overheadPercent: 0 }).overhead, 0);
