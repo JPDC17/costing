@@ -57,8 +57,9 @@ Unpaid Supplier Invoices  = supplier invoices not ticked Paid
 ```
 
 These track cash only. Profit still counts every draw billed and every invoice received,
-paid or not. In the Excel export the Paid column says **Yes**. Type Yes in Excel to mark
-one paid and the totals update; Import reads it back (Y, x and Paid also work).
+paid or not. In the Excel export the Paid column says **Yes**. To mark one paid in Excel,
+type **Yes** (or Y, x or Paid, in any case) and the totals update; Import reads exactly
+the same entries back, so Excel and the app always agree.
 
 ### Profit forecast
 

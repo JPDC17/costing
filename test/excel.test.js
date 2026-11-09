@@ -194,7 +194,7 @@ test('paid ticks: written as Yes, summed by formula, read back', async () => {
   await wb.xlsx.readFile(file);
   const d = wb.getWorksheet(SHEETS.draws);
   assert.deepStrictEqual([d.getCell('E1').value, d.getCell('E2').value, d.getCell('E3').value], ['Paid', 'Yes', '']);
-  assert.strictEqual(d.getCell('D5').value.formula, 'SUMIF(E2:E3,"Yes",D2:D3)');
+  assert.match(d.getCell('D5').value.formula, /^SUMPRODUCT\(ISNUMBER\(MATCH\(TRIM\(E2:E3&""\)/);
   assert.strictEqual(d.getCell('D5').value.result, 1000);
   assert.strictEqual(d.getCell('D6').value.result, 250.5);
   const back = await importWorkbook(file);
@@ -215,13 +215,13 @@ test('older exports without a Paid column still import (notes in column E)', asy
   assert.deepStrictEqual(back.draws, [{ drawNumber: '1', date: '2026-03-31', description: 'March', amount: 5000, paid: false, notes: 'old note' }]);
 });
 
-test('a Paid column typed by hand in Excel is understood (Yes, Y, x, Paid)', async () => {
+test('a Paid column typed by hand in Excel is understood (Yes, Y, x, Paid; not No or TRUE)', async () => {
   const file = tmp('hand.xlsx');
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(SHEETS.draws);
   ws.addRow(['Draw #', 'Date Submitted', 'Description', 'Amount', 'Paid', 'Notes']);
-  ['yes', 'Y', 'x', 'Paid', 'no', ''].forEach((p, i) => ws.addRow([i + 1, '', '', 10, p, '']));
+  ['yes', 'Y', 'x', 'Paid', 'no', '', ' YES ', true].forEach((p, i) => ws.addRow([i + 1, '', '', 10, p, '']));
   await wb.xlsx.writeFile(file);
   const back = await importWorkbook(file);
-  assert.deepStrictEqual(back.draws.map(x => x.paid), [true, true, true, true, false, false]);
+  assert.deepStrictEqual(back.draws.map(x => x.paid), [true, true, true, true, false, false, true, false]);
 });

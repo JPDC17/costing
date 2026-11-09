@@ -121,6 +121,8 @@ test('isPaid and isBlankRow with ticks', () => {
   assert.strictEqual(Calc.isPaid({ paid: 'Yes' }), true);
   assert.strictEqual(Calc.isPaid({ paid: false }), false);
   assert.strictEqual(Calc.isPaid({ paid: 'no' }), false);
+  assert.strictEqual(Calc.isPaid({ paid: ' Y ' }), true);
+  assert.strictEqual(Calc.isPaid({ paid: 'true' }), false); // TRUE is stored differently by different spreadsheet programs
   assert.strictEqual(Calc.isPaid({}), false);
   assert.strictEqual(Calc.isBlankRow({ id: 'x', drawNumber: '4', paid: true, amount: '' }), true);
 });

@@ -15,6 +15,13 @@ const SHEETS = {
 };
 
 function bold(cell) { cell.font = { bold: true }; }
+
+// Sum of `amounts` on rows whose Paid cell says Yes / Y / Paid / x / ✓ (any case,
+// spaces ignored): the same entries the app accepts as paid (Calc.PAID_WORDS).
+function paidSum(paidRange, amountRange) {
+  const words = Calc.PAID_WORDS.map(w => `"${w}"`).join(',');
+  return `SUMPRODUCT(ISNUMBER(MATCH(TRIM(${paidRange}&""),{${words}},0))*${amountRange})`;
+}
 function q(name) { return `'${name}'`; }
 const amount = Calc.money;
 
@@ -134,9 +141,9 @@ async function exportWorkbook(job, filePath) {
   wsD.getCell(d, 4).value = { formula: `SUM(D2:D${d - 1})`, result: t.draws };
   wsD.getCell(d, 4).numFmt = MONEY; bold(wsD.getCell(d, 4));
   const drawsRef = `${q(SHEETS.draws)}!D${d}`;
-  // Paid draws: Paid column says "Yes" (type Yes in Excel to mark one paid).
+  // Paid draws: Paid column says "Yes" (type Yes, Y or x in Excel to mark one paid).
   wsD.getCell(d + 1, 1).value = 'Paid'; bold(wsD.getCell(d + 1, 1));
-  wsD.getCell(d + 1, 4).value = { formula: `SUMIF(E2:E${d - 1},"Yes",D2:D${d - 1})`, result: t.drawsPaid };
+  wsD.getCell(d + 1, 4).value = { formula: paidSum(`E2:E${d - 1}`, `D2:D${d - 1}`), result: t.drawsPaid };
   wsD.getCell(d + 1, 4).numFmt = MONEY;
   wsD.getCell(d + 2, 1).value = 'Outstanding'; bold(wsD.getCell(d + 2, 1));
   wsD.getCell(d + 2, 4).value = { formula: `D${d}-D${d + 1}`, result: t.drawsOutstanding };
@@ -175,7 +182,7 @@ async function exportWorkbook(job, filePath) {
   wsM.getCell(r, 3).numFmt = MONEY; bold(wsM.getCell(r, 3));
   const materialsRef = `${q(SHEETS.materials)}!C${r}`;
   wsM.getCell(r + 1, 1).value = 'Unpaid'; bold(wsM.getCell(r + 1, 1));
-  wsM.getCell(r + 1, 3).value = { formula: `C${r}-SUMIF(E4:E${mLast},"Yes",C4:C${mLast})`, result: t.materialsUnpaid };
+  wsM.getCell(r + 1, 3).value = { formula: `C${r}-${paidSum(`E4:E${mLast}`, `C4:C${mLast}`)}`, result: t.materialsUnpaid };
   wsM.getCell(r + 1, 3).numFmt = MONEY;
   const unpaidRef = `${q(SHEETS.materials)}!C${r + 1}`;
   // Company totals. SUMPRODUCT instead of GROUPBY so it works in every Excel version,

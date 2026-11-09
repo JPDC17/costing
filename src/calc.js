@@ -25,10 +25,12 @@
       k === 'id' || k === 'drawNumber' || k === 'paid' || (k === 'amount' ? !num(v) : !String(v ?? '').trim()));
   }
 
-  // Ticked as paid. Accepts true and the text forms an Excel sheet might hold.
+  // Ticked as paid in the app, or Yes / Y / Paid / x / ✓ typed in an Excel Paid cell
+  // (any case, spaces ignored). The Excel export's formulas accept exactly the same.
+  const PAID_WORDS = ['yes', 'y', 'paid', 'x', '✓'];
   function isPaid(row) {
     const v = row && row.paid;
-    return v === true || /^(yes|y|paid|true|x|✓)$/i.test(String(v ?? '').trim());
+    return v === true || (typeof v === 'string' && PAID_WORDS.includes(v.trim().toLowerCase()));
   }
 
   // Round to cents the way Excel's ROUND(x, 2) does: halves go away from zero, and
@@ -206,5 +208,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

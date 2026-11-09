@@ -198,7 +198,7 @@ function renderRow(key, row, i) {
   if (!def.hideIndex) tr.append(el('td', { class: 'num', text: String(i + 1) }));
   def.cols.forEach((c, ci) => {
     if (c.type === 'check') {
-      const box = el('input', { type: 'checkbox', 'aria-label': `${c.label} (row ${i + 1})`, title: c.title });
+      const box = el('input', { type: 'checkbox', 'aria-label': c.title || c.label, title: c.title });
       box.checked = Calc.isPaid(row);
       tr.classList.toggle('is-paid', box.checked);
       box.addEventListener('change', () => {
@@ -561,7 +561,7 @@ function buildReport() {
     return el('div', { class: 'r-section' }, [
       el('h3', {}, [title, hint ? el('span', { class: 'muted r-hint', text: ` ${hint}` }) : null]),
       el('table', {}, [
-        el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.money ? 'm' : '', text: c.label })))),
+        el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.money ? 'm' : c.check ? 'c' : '', text: c.label })))),
         el('tbody', {}, rows.length
           ? rows.map(x => el('tr', {}, cols.map(c => td(c, c.money ? money(x[c.key]) : c.check ? (Calc.isPaid(x) ? 'Yes' : '') : (x[c.key] || '')))))
           : [el('tr', {}, el('td', { colspan: cols.length, class: 'muted', text: 'None' }))]),
