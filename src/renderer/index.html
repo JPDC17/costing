@@ -9,7 +9,7 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="brand"><img src="logo.png" alt="">Job Costing</div>
+      <div class="brand" id="brand" title="Job Costing"><img id="brandLogo" src="logo.png" alt=""><span id="brandName">Job Costing</span></div>
       <input id="jobNameTop" class="job-name" type="text" placeholder="Untitled job" aria-label="Job name">
       <div class="actions">
         <button data-cmd="new" title="New job (Ctrl+N)">New</button>
@@ -30,6 +30,7 @@
       <button class="nav-item" data-tab="labour"><span>Labour</span><span class="badge" id="nav-labour"></span></button>
       <button class="nav-item" data-tab="equipment"><span>Equipment</span><span class="badge" id="nav-equipment"></span></button>
       <button class="nav-item" data-tab="materials"><span>Materials &amp; Suppliers</span><span class="badge" id="nav-materials"></span></button>
+      <button class="nav-item nav-settings" data-tab="company"><span>Company &amp; Logo</span><span class="badge" id="nav-company"></span></button>
       <div class="nav-foot" id="fileInfo"></div>
     </nav>
 
@@ -110,6 +111,32 @@
         <div class="card">
           <div class="card-head"><h2>Change Orders</h2><span class="hint">Tracked separately — not included in the contract value</span></div>
           <div data-table="changeOrders"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-company">
+        <div class="card">
+          <div class="card-head"><h2>Your Company</h2><span class="hint">Shown at the top of PDF reports and Excel exports. Saved on this computer for every job.</span></div>
+          <div class="company-grid">
+            <div>
+              <div class="logo-box" id="logoBox"><img id="logoPreview" alt="Company logo" hidden><span id="logoEmpty">No logo yet</span></div>
+              <div class="logo-actions">
+                <button id="logoUpload" class="primary-outline">Upload logo…</button>
+                <button id="logoRemove">Remove</button>
+              </div>
+              <p class="hint">PNG, JPG, SVG, GIF, WebP or BMP. A logo with a transparent or white background looks best. Large images are resized automatically.</p>
+            </div>
+            <div class="form">
+              <label>Company name<input data-company="name" type="text" maxlength="120" placeholder="e.g. Northway Construction Ltd."></label>
+              <label>Address<textarea data-company="address" rows="2" maxlength="300" placeholder="Street, city, postal code"></textarea></label>
+              <div class="form-2">
+                <label>Phone<input data-company="phone" type="text" maxlength="60"></label>
+                <label>Email<input data-company="email" type="text" maxlength="120"></label>
+              </div>
+              <label>Website<input data-company="website" type="text" maxlength="120"></label>
+              <div class="hint" id="companySaved" aria-live="polite"></div>
+            </div>
+          </div>
         </div>
       </section>
 

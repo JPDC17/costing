@@ -129,6 +129,27 @@ npm start
 
 `npm run dist:mac` and `npm run dist:linux` build a macOS .dmg (run on a Mac) or a Linux AppImage.
 
+## Your company name and logo
+
+Open **Company & Logo** (bottom of the sidebar) to enter your company name, address,
+phone, email and website, and upload a logo (PNG, JPG, SVG, GIF, WebP or BMP).
+Empty margins around the logo are trimmed and large images are resized automatically.
+These are saved on this computer for every job (in the app's settings folder) and
+appear:
+
+- in the top bar of the app;
+- in the letterhead and footer of every **PDF report**;
+- in the **Excel export**: company name and logo at the top of Total Breakdown, and
+  in the printed page header of every sheet.
+
+## The PDF report
+
+A letterhead (logo, company details, report date), the project details, four key
+figures (contract value, total costs, profit to date, and forecast or contract profit),
+a two-column financial summary, the profit forecast, then every line item in clean
+tables with totals. Column headings repeat on each page, and the footer shows the
+company, job and page number.
+
 ## Look and feel
 
 - Colours: purple #845EC2, dark #4B4453, lavender #B0A8B9, rust #C34A36 and

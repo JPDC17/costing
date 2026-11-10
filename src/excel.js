@@ -2,6 +2,7 @@
 // Exported workbooks keep live formulas so they still work as a tracker in Excel.
 const ExcelJS = require('exceljs');
 const Calc = require('./calc');
+const Company = require('./company');
 
 const MONEY = '"$"#,##0.00';
 const ACCT = '_-"$"* #,##0.00_-;\\-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-';
@@ -88,14 +89,18 @@ function autoFit(ws, min = 10, max = 60) {
 }
 
 // Print each sheet one page wide, and keep the header row in view while scrolling.
-function finishSheet(ws, headerRow, landscape = false) {
+// Excel header/footer text treats & as a code, so a literal & is written as &&.
+const hf = s => String(s || '').replace(/&/g, '&&').replace(/[\r\n]+/g, ' ');
+
+function finishSheet(ws, headerRow, landscape = false, printHeader = '') {
   autoFit(ws);
   ws.pageSetup = { orientation: landscape ? 'landscape' : 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } };
-  ws.headerFooter = { oddFooter: '&L&8&A&R&8Page &P of &N' };
+  ws.headerFooter = { oddHeader: printHeader, oddFooter: '&L&8&A&R&8Page &P of &N' };
   if (headerRow) ws.views = [{ state: 'frozen', ySplit: headerRow }];
 }
 
-async function exportWorkbook(job, filePath) {
+async function exportWorkbook(job, filePath, company) {
+  company = Company.normalizeCompany(company);
   job = Calc.normalizeJob(job);
   // Leave out rows that were added but never filled in.
   job = { ...job };
@@ -290,12 +295,25 @@ async function exportWorkbook(job, filePath) {
   line(tr, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders); tr += 2;
   line(tr, 'Unpaid Supplier Invoices', unpaidRef, t.materialsUnpaid);
 
-  finishSheet(wsQ, 2);
-  finishSheet(wsD, 1, true);
-  finishSheet(wb.getWorksheet(SHEETS.labour), 1);
-  finishSheet(wb.getWorksheet(SHEETS.equipment), 1);
-  finishSheet(wsM, 3, true);
-  finishSheet(wsT, 0);
+  // Company name in the printed page header; logo at the top right of Total Breakdown.
+  const printHeader = company.name || job.jobName ? `&L&9&B${hf(company.name)}&R&9${hf(job.jobName)}` : '';
+  finishSheet(wsQ, 2, false, printHeader);
+  finishSheet(wsD, 1, true, printHeader);
+  finishSheet(wb.getWorksheet(SHEETS.labour), 1, false, printHeader);
+  finishSheet(wb.getWorksheet(SHEETS.equipment), 1, false, printHeader);
+  finishSheet(wsM, 3, true, printHeader);
+  finishSheet(wsT, 0, false, printHeader);
+  if (company.name) {
+    wsT.getCell('F1').value = company.name;
+    wsT.getCell('F1').font = { bold: true, size: 12 };
+    wsT.getColumn(6).width = Math.max(wsT.getColumn(6).width || 10, Math.min(60, company.name.length + 4), 32);
+  }
+  const size = Company.imageSize(company.logo);
+  if (size && size.width && size.height) {
+    const id = wb.addImage({ base64: company.logo, extension: size.type });
+    const h = Math.min(60, size.height), w = Math.min(220, Math.round(size.width * h / size.height));
+    wsT.addImage(id, { tl: { col: 5, row: company.name ? 1.2 : 0.2 }, ext: { width: w, height: Math.round(w * size.height / size.width) }, editAs: 'oneCell' });
+  }
 
   await wb.xlsx.writeFile(filePath);
 }

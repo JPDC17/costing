@@ -225,3 +225,28 @@ test('a Paid column typed by hand in Excel is understood (Yes, Y, x, Paid; not N
   const back = await importWorkbook(file);
   assert.deepStrictEqual(back.draws.map(x => x.paid), [true, true, true, true, false, false, true, false]);
 });
+
+test('company name and logo appear in the Excel export; & is escaped in page headers', async () => {
+  const file = tmp('brand.xlsx');
+  const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8DwHwQYYAwAqZcI+NoFaNYAAAAASUVORK5CYII=';
+  await exportWorkbook({ ...Calc.newJob(), jobName: 'A & B Reno' }, file, { name: 'Smith & Sons', logo });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const tb = wb.getWorksheet(SHEETS.breakdown);
+  assert.strictEqual(tb.getCell('F1').value, 'Smith & Sons');
+  assert.strictEqual(tb.getImages().length, 1);
+  assert.strictEqual(tb.headerFooter.oddHeader, '&L&9&BSmith && Sons&R&9A && B Reno');
+  // and the export still imports normally
+  const back = await importWorkbook(file);
+  assert.strictEqual(back.jobName, 'A & B Reno');
+});
+
+test('without company details there is no logo and no company cell', async () => {
+  const file = tmp('nobrand.xlsx');
+  await exportWorkbook({ ...Calc.newJob() }, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const tb = wb.getWorksheet(SHEETS.breakdown);
+  assert.strictEqual(tb.getImages().length, 0);
+  assert.strictEqual(tb.getCell('F1').value, null);
+});

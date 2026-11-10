@@ -60,6 +60,7 @@ const TABLES = {
 };
 
 const state = {
+  company: { name: '', address: '', phone: '', email: '', website: '', logo: '' },
   job: Calc.newJob(),
   filePath: null,
   dirty: false,
@@ -549,102 +550,258 @@ function renderAll() {
   updateTitle();
 }
 
+// ---------- Company details & logo ----------
+
+// Load an image (any format the window can show), trim empty margins (transparent or
+// white), shrink it to fit 800x400 and return it as a PNG data URL.
+function processLogo(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth || 600, h = img.naturalHeight || 300;
+      if (!w || !h) return reject(new Error('That image has no size.'));
+      // SVGs without a size come through tiny; draw them larger so they stay sharp.
+      const scaleUp = Math.max(1, Math.min(4, 400 / Math.max(w, h)));
+      w = Math.round(w * scaleUp); h = Math.round(h * scaleUp);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+      const px = ctx.getImageData(0, 0, w, h).data;
+      let x0 = w, y0 = h, x1 = -1, y1 = -1;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const empty = px[i + 3] < 12 || (px[i] > 244 && px[i + 1] > 244 && px[i + 2] > 244);
+          if (!empty) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+      }
+      if (x1 < 0) return reject(new Error('That image looks blank.'));
+      const pad = 2;
+      x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+      const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+      const k = Math.min(1, 800 / cw, 400 / ch);
+      const out = document.createElement('canvas');
+      out.width = Math.max(1, Math.round(cw * k)); out.height = Math.max(1, Math.round(ch * k));
+      const o = out.getContext('2d'); o.imageSmoothingQuality = 'high';
+      o.drawImage(c, x0, y0, cw, ch, 0, 0, out.width, out.height);
+      resolve(out.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('That file isn’t an image the app can read.'));
+    img.src = dataUrl;
+  });
+}
+
+function renderBrand() {
+  const c = state.company;
+  $('#brandLogo').src = c.logo || 'logo.png';
+  $('#brandLogo').classList.toggle('custom', !!c.logo);
+  // A logo usually already shows the company name, so show one or the other.
+  $('#brandName').textContent = c.logo ? '' : (c.name || 'Job Costing');
+  $('#brandName').hidden = !!c.logo;
+  $('#brand').title = c.name ? `${c.name} — Job Costing` : 'Job Costing';
+  $('#nav-company').textContent = c.name || 'Add your name and logo';
+}
+
+function renderCompany() {
+  const c = state.company;
+  for (const input of $$('[data-company]')) input.value = c[input.dataset.company] || '';
+  $('#logoPreview').hidden = !c.logo;
+  if (c.logo) $('#logoPreview').src = c.logo;
+  $('#logoEmpty').hidden = !!c.logo;
+  $('#logoRemove').disabled = !c.logo;
+  renderBrand();
+}
+
+let companyTimer = null;
+function saveCompanySoon() {
+  clearTimeout(companyTimer);
+  $('#companySaved').textContent = 'Saving…';
+  companyTimer = setTimeout(saveCompanyNow, 400);
+}
+
+async function saveCompanyNow() {
+  clearTimeout(companyTimer);
+  try {
+    state.company = await window.api.saveCompany(state.company);
+    $('#companySaved').textContent = 'Saved';
+    renderBrand();
+  } catch (err) {
+    $('#companySaved').textContent = '';
+    toast(`Could not save company details: ${errMsg(err)}`);
+  }
+}
+
+async function uploadLogo() {
+  try {
+    const res = await window.api.pickLogo();
+    if (!res) return;
+    state.company.logo = await processLogo(res.dataUrl);
+    renderCompany();
+    await saveCompanyNow();
+    toast('Logo added');
+  } catch (err) {
+    toast(`Could not use that logo: ${errMsg(err)}`);
+  }
+}
+
 // ---------- Printable report ----------
 
 function buildReport() {
   const j = state.job;
-  // Footer text for every PDF page (see @page in styles.css).
-  document.documentElement.style.setProperty('--report-title', JSON.stringify(`${j.jobName || 'Untitled job'} — Cost Report`));
+  const c = state.company;
   const t = Calc.totals(j);
-  const r = $('#report');
-  const td = (c, text) => el('td', { class: c.money ? 'm' : c.check ? 'c' : '', text });
-  const rowsTable = (title, key, cols, hint) => {
-    const rows = j[key].filter(x => !Calc.isBlankRow(x));
-    return el('div', { class: 'r-section' }, [
-      el('h3', {}, [title, hint ? el('span', { class: 'muted r-hint', text: ` ${hint}` }) : null]),
-      el('table', {}, [
-        el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.money ? 'm' : c.check ? 'c' : '', text: c.label })))),
-        el('tbody', {}, rows.length
-          ? rows.map(x => el('tr', {}, cols.map(c => td(c, c.money ? money(x[c.key]) : c.check ? (Calc.isPaid(x) ? 'Yes' : '') : (x[c.key] || '')))))
-          : [el('tr', {}, el('td', { colspan: cols.length, class: 'muted', text: 'None' }))]),
-        el('tbody', { class: 'r-total' }, el('tr', {}, cols.map((c, i) => td(c, c.money ? money(Calc.sum(rows)) : c.check ? `${rows.filter(Calc.isPaid).length}/${rows.length}` : (i === 0 ? 'Total' : ''))))),
-      ]),
-    ]);
-  };
-  const line = (label, value, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { class: 'm', text: value })]);
-
-  const details = [
-    ['Job number', j.jobNumber], ['Client', j.client], ['Site address', j.address],
-  ].filter(([, v]) => String(v || '').trim()).map(([k, v]) => el('div', {}, [el('b', { text: `${k}: ` }), v]));
-
-  const suppliers = Calc.supplierTotals(j.materials);
   const f = Calc.forecast(j);
-  const fline = (label, a, b, c, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { class: 'm', text: a }), el('td', { class: 'm', text: b }), el('td', { class: 'm', text: c })]);
-  const forecastSection = f.ready ? el('div', { class: 'r-section r-keep' }, [
-    el('h3', {}, ['Profit Forecast', el('span', { class: 'muted r-hint', text: ` (${fmtDays(f.daysWorked)} worked, ${fmtDays(f.daysRemaining)} remaining)` })]),
-    el('p', { class: 'r-basis muted', text: `Labour and equipment carried forward at ${money(f.perDay)} per day (${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). Materials still to buy: ${money(f.materialsRemaining)}.` }),
-    el('table', { class: 'r-forecast' }, [
-      el('thead', {}, el('tr', {}, ['', 'To Date', 'Remaining', 'At Completion'].map((h, i) => el('th', { class: i ? 'm' : '', text: h })))),
+  const jobName = j.jobName || 'Untitled job';
+  const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  // Text for the page margins on every page (see @page in styles.css).
+  const css = document.documentElement.style;
+  css.setProperty('--report-footer', JSON.stringify([c.name, `${jobName} — Job Cost Report`].filter(Boolean).join('  ·  ')));
+  css.setProperty('--report-running', JSON.stringify(jobName));
+
+  const neg = v => (v < 0 ? ' neg' : '');
+  const pctText = Calc.formatPercent;
+
+  // --- Letterhead: company logo and details on the left, document title on the right.
+  const contact = [c.phone, c.email, c.website].filter(Boolean).join('   ·   ');
+  const brand = (c.logo || c.name) ? el('div', { class: 'rp-brand' }, [
+    c.logo ? el('img', { class: 'rp-logo', src: c.logo, alt: '' }) : null,
+    el('div', { class: 'rp-co' }, [
+      c.name ? el('div', { class: 'rp-co-name', text: c.name }) : null,
+      c.address ? el('div', { class: 'rp-co-line', text: c.address.replace(/\n+/g, ', ') }) : null,
+      contact ? el('div', { class: 'rp-co-line', text: contact }) : null,
+    ]),
+  ]) : el('div');
+  const head = el('header', { class: 'rp-head' }, [
+    brand,
+    el('div', { class: 'rp-doc' }, [
+      el('div', { class: 'rp-doc-title', text: 'Job Cost Report' }),
+      el('div', { class: 'rp-doc-date', text: today }),
+    ]),
+  ]);
+
+  // --- Project block
+  const facts = [['Job number', j.jobNumber], ['Client', j.client], ['Site address', j.address]]
+    .filter(([, v]) => String(v || '').trim());
+  const project = el('section', { class: 'rp-project' }, [
+    el('div', { class: 'rp-eyebrow', text: 'Project' }),
+    el('h1', { text: jobName }),
+    facts.length ? el('dl', { class: 'rp-facts' }, facts.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })])) : null,
+  ]);
+
+  // --- Key figures
+  const kpi = (label, value, sub, cls = '') => el('div', { class: `rp-kpi${cls}` }, [
+    el('div', { class: 'rp-kpi-label', text: label }),
+    el('div', { class: 'rp-kpi-value', text: value }),
+    el('div', { class: 'rp-kpi-sub', text: sub }),
+  ]);
+  const kpis = el('section', { class: 'rp-kpis' }, [
+    kpi('Contract Value', money(t.totalContract), `${pctText(t.billedPercent)} billed · ${money(t.remainingToBill)} to bill`),
+    kpi('Total Costs', money(t.totalCosts), `Includes ${t.overheadPercent}% overhead`),
+    kpi('Profit to Date', money(t.profitToDate), `${pctText(t.marginToDate)} margin on draws billed`, ` accent${neg(t.profitToDate)}`),
+    f.ready
+      ? kpi('Forecast Profit', money(f.profit), `${pctText(f.margin)} margin at completion · ${fmtDays(f.daysRemaining)} left`, neg(f.profit))
+      : kpi('Contract Profit', money(t.profit), `${pctText(t.margin)} margin on costs to date`, neg(t.profit)),
+  ]);
+
+  const notes = String(j.notes || '').trim()
+    ? el('section', { class: 'rp-notes' }, [el('div', { class: 'rp-eyebrow', text: 'Notes' }), el('p', { text: j.notes })])
+    : null;
+
+  // --- Financial summary: two side-by-side statements
+  const row = (label, value, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: value })]);
+  const statement = (title, rows) => el('div', { class: 'rp-statement' }, [
+    el('h3', { text: title }),
+    el('table', {}, el('tbody', {}, rows)),
+  ]);
+  const summary = el('section', { class: 'rp-section rp-keep' }, [
+    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Financial Summary' })]),
+    el('div', { class: 'rp-two' }, [
+      statement('Costs', [
+        row('Labour', money(t.labour)),
+        row('Equipment', money(t.equipment)),
+        row('Material and Supplier', money(t.materials)),
+        row('Subtotal', money(t.subtotal), 'sub'),
+        row(`Overhead (${t.overheadPercent}%)`, money(t.overhead)),
+        row('Total Costs', money(t.totalCosts), 'total'),
+        row('Unpaid supplier invoices', `${money(t.materialsUnpaid)}`, 'note'),
+      ]),
+      statement('Contract & Billing', [
+        row('Total Contract Value', money(t.totalContract)),
+        row(`Draws submitted (${t.drawCount})`, money(t.draws)),
+        row(`Paid by client (${t.drawsPaidCount} of ${t.drawCount})`, money(t.drawsPaid), 'indent'),
+        row('Outstanding', money(t.drawsOutstanding), 'indent'),
+        row('Remaining to bill', money(t.remainingToBill)),
+        row('Profit to Date', money(t.profitToDate), `total${neg(t.profitToDate)}`),
+        row('Contract profit (costs to date)', `${money(t.profit)}  ·  ${pctText(t.margin)}`, 'note'),
+      ]),
+    ]),
+    t.changeOrders ? el('p', { class: 'rp-footnote', text: `Change orders of ${money(t.changeOrders)} are tracked separately and not included in the contract value.` }) : null,
+  ]);
+
+  // --- Forecast
+  const frow = (label, a, b, cc, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: a }), el('td', { text: b }), el('td', { text: cc })]);
+  const forecast = f.ready ? el('section', { class: 'rp-section rp-keep' }, [
+    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Profit Forecast' }), el('span', { class: 'rp-h2-meta', text: `${fmtDays(f.daysWorked)} worked · ${fmtDays(f.daysRemaining)} remaining` })]),
+    el('p', { class: 'rp-lead', text: `Labour and equipment carried forward at ${money(f.perDay)} per day (${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). Materials still to buy: ${money(f.materialsRemaining)}.` }),
+    el('table', { class: 'rp-table rp-num3' }, [
+      el('thead', {}, el('tr', {}, ['', 'To date', 'Remaining', 'At completion'].map(h => el('th', { text: h })))),
       el('tbody', {}, [
-        fline('Labour', money(t.labour), money(f.labourRemaining), money(f.labour)),
-        fline('Equipment', money(t.equipment), money(f.equipmentRemaining), money(f.equipment)),
-        fline('Material and Supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
-        fline(`Overhead (${t.overheadPercent}%)`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
-        fline('Total Costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'b'),
-        fline('Total Contract Value', '', '', money(t.totalContract)),
-        fline('Forecast Profit', '', '', money(f.profit), 'b'),
-        fline('Forecast Margin', '', '', Calc.formatPercent(f.margin)),
+        frow('Labour', money(t.labour), money(f.labourRemaining), money(f.labour)),
+        frow('Equipment', money(t.equipment), money(f.equipmentRemaining), money(f.equipment)),
+        frow('Material and Supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
+        frow(`Overhead (${t.overheadPercent}%)`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
+        frow('Total Costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'total'),
+        frow('Total Contract Value', '', '', money(t.totalContract)),
+        frow('Forecast Profit', '', '', money(f.profit), `total${neg(f.profit)}`),
+        frow('Forecast Margin', '', '', pctText(f.margin)),
       ]),
     ]),
   ]) : null;
-  const dated = [{ key: 'date', label: 'Date(s)' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true }];
 
-  r.replaceChildren(...[
-    el('h1', { text: j.jobName || 'Untitled job' }),
-    el('div', { class: 'r-meta' }, [...details, el('div', { class: 'muted', text: `Report generated ${new Date().toLocaleDateString()}` })]),
-    String(j.notes || '').trim() ? el('p', { class: 'r-notes', text: j.notes }) : null,
-    el('div', { class: 'r-section r-keep' }, [
-      el('h3', { text: 'Total Breakdown' }),
-      el('table', { class: 'r-summary' }, el('tbody', {}, [
-        line('Labour', money(t.labour)),
-        line('Equipment', money(t.equipment)),
-        line('Material and Supplier', money(t.materials)),
-        line('Total', money(t.subtotal), 'b'),
-        line(`Overhead (${t.overheadPercent}%)`, money(t.overhead)),
-        line('Total Costs', money(t.totalCosts), 'b'),
-        line('Original Contract Value', money(t.originalContract), 'gap'),
-        line('Total Contract Value', money(t.totalContract), 'b'),
-        line('Contract Profit (costs to date)', money(t.profit), `b gap${t.profit < 0 ? ' neg' : ''}`),
-        line('Contract Margin', Calc.formatPercent(t.margin)),
-        line(`Draws Submitted (${t.drawCount})`, money(t.draws), 'gap'),
-        line(`Paid by Client (${t.drawsPaidCount} of ${t.drawCount})`, money(t.drawsPaid)),
-        line('Outstanding (not yet paid)', money(t.drawsOutstanding)),
-        line('Billed to Date (% of contract)', Calc.formatPercent(t.billedPercent)),
-        line('Remaining to Bill', money(t.remainingToBill)),
-        line('Profit to Date (draws − costs)', money(t.profitToDate), `b big${t.profitToDate < 0 ? ' neg' : ''}`),
-        line('Margin on Draws', Calc.formatPercent(t.marginToDate)),
-        ...(f.ready ? [
-          line(`Forecast Profit at Completion (${fmtDays(f.daysRemaining)} left)`, money(f.profit), `b big gap${f.profit < 0 ? ' neg' : ''}`),
-          line('Forecast Margin', Calc.formatPercent(f.margin)),
-        ] : []),
-        line('Change Orders (not included)', money(t.changeOrders), 'gap muted'),
-        line(`Unpaid Supplier Invoices (${t.materialsUnpaidCount})`, money(t.materialsUnpaid), 'muted'),
-      ])),
+  // --- Detail tables
+  const detail = (title, key, cols, meta) => {
+    const rows = j[key].filter(x => !Calc.isBlankRow(x));
+    const cell = (col, text) => el('td', { class: col.money ? 'num' : col.check ? 'ctr' : '', text });
+    const value = (x, col) => (col.money ? money(x[col.key]) : col.check ? (Calc.isPaid(x) ? 'Paid' : '—') : (x[col.key] || ''));
+    const count = `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`;
+    return el('section', { class: `rp-section${rows.length <= 12 ? ' rp-keep' : ''}` }, [
+      el('h2', { class: 'rp-h2' }, [el('span', { text: title }), el('span', { class: 'rp-h2-meta', text: rows.length ? `${count} · ${money(Calc.sum(rows))}` : 'None' })]),
+      meta ? el('p', { class: 'rp-lead', text: meta }) : null,
+      rows.length ? el('table', { class: 'rp-table' }, [
+        el('colgroup', {}, cols.map(col => { const e = el('col'); if (col.w) e.style.width = col.w; return e; })),
+        el('thead', {}, el('tr', {}, cols.map(col => el('th', { class: col.money ? 'num' : col.check ? 'ctr' : '', text: col.label })))),
+        el('tbody', {}, rows.map(x => el('tr', { class: cols.some(col => col.check) && Calc.isPaid(x) ? 'is-paid' : '' }, cols.map(col => cell(col, value(x, col)))))),
+        el('tbody', { class: 'rp-total' }, el('tr', {}, cols.map((col, i) => cell(col,
+          col.money ? money(Calc.sum(rows)) : col.check ? `${rows.filter(Calc.isPaid).length} of ${rows.length}` : (i === 0 ? 'Total' : ''))))),
+      ]) : null,
+    ]);
+  };
+  const dated = [{ key: 'date', label: 'Date(s)', w: '22%' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }];
+  const suppliers = Calc.supplierTotals(j.materials);
+  const supplierSection = suppliers.length ? el('section', { class: 'rp-section rp-keep' }, [
+    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Totals by Supplier' }), el('span', { class: 'rp-h2-meta', text: `${suppliers.length} ${suppliers.length === 1 ? 'company' : 'companies'}` })]),
+    el('table', { class: 'rp-table rp-half' }, [
+      el('thead', {}, el('tr', {}, [el('th', { text: 'Company' }), el('th', { class: 'num', text: 'Total' })])),
+      el('tbody', {}, suppliers.map(x => el('tr', {}, [el('td', { text: x.supplier }), el('td', { class: 'num', text: money(x.total) })]))),
+      el('tbody', { class: 'rp-total' }, el('tr', {}, [el('td', { text: 'Total' }), el('td', { class: 'num', text: money(t.materials) })])),
     ]),
-    forecastSection,
-    rowsTable('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }]),
-    rowsTable('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change Order' }, { key: 'notes', label: 'Notes' }, { key: 'amount', label: 'Total', money: true }], '(not included in the contract value)'),
-    rowsTable('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw #' }, { key: 'date', label: 'Date Submitted' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Paid', check: true }, { key: 'amount', label: 'Amount', money: true }]),
-    rowsTable('Labour', 'labour', dated),
-    rowsTable('Equipment', 'equipment', dated),
-    rowsTable('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Name' }, { key: 'invoiceNumber', label: 'Invoice #' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Paid', check: true }, { key: 'amount', label: 'Amount', money: true }]),
-    suppliers.length ? el('div', { class: 'r-section r-keep' }, [
-      el('h3', { text: 'Company Totals' }),
-      el('table', { class: 'r-summary' }, el('tbody', {}, [
-        ...suppliers.map(x => line(x.supplier, money(x.total))),
-        line('Total', money(t.materials), 'b'),
-      ])),
-    ]) : null,
+  ]) : null;
+
+  $('#report').replaceChildren(...[
+    head,
+    project,
+    kpis,
+    notes,
+    summary,
+    forecast,
+    detail('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }]),
+    detail('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change order' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }],
+      j.changeOrders.some(x => !Calc.isBlankRow(x)) ? 'Tracked separately; not included in the contract value.' : ''),
+    detail('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw', w: '8%' }, { key: 'date', label: 'Submitted', w: '14%' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes', w: '20%' }, { key: 'paid', label: 'Status', check: true, w: '10%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
+    detail('Labour', 'labour', dated),
+    detail('Equipment', 'equipment', dated),
+    detail('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Supplier', w: '26%' }, { key: 'invoiceNumber', label: 'Invoice', w: '14%' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Status', check: true, w: '10%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
+    supplierSection,
+    el('p', { class: 'rp-end', text: `Prepared ${today}${c.name ? ` by ${c.name}` : ''}. Figures are rounded to the cent.` }),
   ].filter(Boolean));
 }
 
@@ -773,6 +930,13 @@ function init() {
     }
   }
   for (const a of $$('[data-goto]')) a.addEventListener('click', e => { e.preventDefault(); switchTab(a.dataset.goto); });
+
+  for (const input of $$('[data-company]')) {
+    input.addEventListener('input', () => { state.company[input.dataset.company] = input.value; renderBrand(); saveCompanySoon(); });
+  }
+  $('#logoUpload').addEventListener('click', uploadLogo);
+  $('#logoRemove').addEventListener('click', async () => { state.company.logo = ''; renderCompany(); await saveCompanyNow(); toast('Logo removed'); });
+  window.api.getSettings().then(s => { state.company = s.company; renderCompany(); }).catch(() => renderCompany());
 
   window.api.onMenu(run);
   window.api.onRequestClose(async () => {

@@ -3,9 +3,12 @@ const path = require('path');
 const fs = require('fs/promises');
 const { exportWorkbook, importWorkbook } = require('./excel');
 const Calc = require('./calc');
+const Company = require('./company');
 
 const JOB_FILTERS = [{ name: 'Job Costing File', extensions: ['jobcost'] }, { name: 'All Files', extensions: ['*'] }];
 const XLSX_FILTERS = [{ name: 'Excel Workbook', extensions: ['xlsx'] }];
+
+const APP_BACKGROUND = '#f6f4f8';
 
 let win;
 let allowClose = false;
@@ -62,7 +65,7 @@ function createWindow() {
     minWidth: Math.min(900, area.width),
     minHeight: Math.min(560, area.height),
     title: 'Job Costing',
-    backgroundColor: '#f6f4f8',
+    backgroundColor: APP_BACKGROUND,
     icon: path.join(__dirname, 'renderer', 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -167,6 +170,51 @@ ipcMain.handle('job:save', async (_e, { job, filePath, saveAs }) => {
   return { filePath: target };
 });
 
+// ---------- Company details (saved once per computer) ----------
+
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+const LOGO_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp' };
+const MAX_LOGO_FILE = 15 * 1024 * 1024;
+
+async function readSettings() {
+  try {
+    const data = JSON.parse(await fs.readFile(settingsFile(), 'utf8'));
+    return { company: Company.normalizeCompany(data && data.company) };
+  } catch {
+    return { company: Company.emptyCompany() };
+  }
+}
+
+ipcMain.handle('settings:get', () => readSettings());
+
+ipcMain.handle('settings:saveCompany', async (_e, company) => {
+  const clean = Company.normalizeCompany(company);
+  try {
+    await fs.mkdir(path.dirname(settingsFile()), { recursive: true });
+    await writeFileSafely(settingsFile(), JSON.stringify({ company: clean }, null, 2));
+  } catch (err) {
+    throw friendly(err, 'saving');
+  }
+  return clean;
+});
+
+// Let the person pick an image; the window resizes it and turns it into a PNG.
+ipcMain.handle('settings:pickLogo', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    title: 'Choose your company logo',
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: Object.keys(LOGO_TYPES).map(e => e.slice(1)) }],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const file = res.filePaths[0];
+  const type = LOGO_TYPES[path.extname(file).toLowerCase()];
+  if (!type) throw new Error('Choose a PNG, JPG, GIF, WebP, SVG or BMP image.');
+  const stat = await fs.stat(file);
+  if (stat.size > MAX_LOGO_FILE) throw new Error('That image is too large (over 15 MB). Please use a smaller file.');
+  const data = await fs.readFile(file);
+  return { dataUrl: `data:${type};base64,${data.toString('base64')}`, name: path.basename(file) };
+});
+
 ipcMain.handle('excel:export', async (_e, job) => {
   const res = await dialog.showSaveDialog(win, {
     defaultPath: safeName(job.jobName, 'Job') + ' - Costing.xlsx',
@@ -174,7 +222,7 @@ ipcMain.handle('excel:export', async (_e, job) => {
   });
   if (res.canceled || !res.filePath) return null;
   try {
-    await exportWorkbook(job, res.filePath);
+    await exportWorkbook(job, res.filePath, (await readSettings()).company);
   } catch (err) {
     throw friendly(err, 'exporting');
   }
@@ -195,10 +243,18 @@ ipcMain.handle('pdf:export', async (_e, jobName) => {
   if (res.canceled || !res.filePath) return null;
   // Page size, margins and the footer (job name, page numbers) come from the report's
   // @page CSS, so the footer uses the app's own font.
-  const data = await win.webContents.printToPDF({
-    printBackground: false,
-    preferCSSPageSize: true,
-  });
+  // Printing backgrounds (for the tinted headings and cards) also paints the page
+  // margins in the window's background colour, so make it white while printing.
+  win.setBackgroundColor('#ffffff');
+  let data;
+  try {
+    data = await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+  } finally {
+    win.setBackgroundColor(APP_BACKGROUND);
+  }
   try {
     await fs.writeFile(res.filePath, data);
   } catch (err) {
