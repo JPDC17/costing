@@ -553,6 +553,8 @@ function renderAll() {
 
 function buildReport() {
   const j = state.job;
+  // Footer text for every PDF page (see @page in styles.css).
+  document.documentElement.style.setProperty('--report-title', JSON.stringify(`${j.jobName || 'Untitled job'} — Cost Report`));
   const t = Calc.totals(j);
   const r = $('#report');
   const td = (c, text) => el('td', { class: c.money ? 'm' : c.check ? 'c' : '', text });

@@ -193,16 +193,11 @@ ipcMain.handle('pdf:export', async (_e, jobName) => {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (res.canceled || !res.filePath) return null;
-  const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  // Page size, margins and the footer (job name, page numbers) come from the report's
+  // @page CSS, so the footer uses the app's own font.
   const data = await win.webContents.printToPDF({
     printBackground: false,
-    pageSize: 'Letter',
-    margins: { top: 0.5, bottom: 0.6, left: 0.5, right: 0.5 },
-    displayHeaderFooter: true,
-    headerTemplate: '<span></span>',
-    footerTemplate: `<div style="font-size:8px;color:#666;width:100%;padding:0 0.5in;display:flex;justify-content:space-between;font-family:Arial,sans-serif">
-      <span>${esc(jobName)} \u2014 Cost Report</span>
-      <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
+    preferCSSPageSize: true,
   });
   try {
     await fs.writeFile(res.filePath, data);

@@ -129,6 +129,14 @@ npm start
 
 `npm run dist:mac` and `npm run dist:linux` build a macOS .dmg (run on a Mac) or a Linux AppImage.
 
+## Look and feel
+
+- Colours: purple #845EC2, dark #4B4453, lavender #B0A8B9, rust #C34A36 and
+  coral #FF8066 (set once at the top of `src/renderer/styles.css`).
+- Font: Roboto Condensed, bundled in `src/renderer/fonts/` (Apache License 2.0), so
+  the app and its PDF reports look the same on every computer.
+- Icon: `build/icon.ico` (the exe) and `src/renderer/logo.png` (top bar and window).
+
 ## Tests
 
 ```bash

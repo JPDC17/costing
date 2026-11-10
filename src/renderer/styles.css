@@ -1,3 +1,42 @@
+/* Roboto Condensed, bundled with the app so it looks the same on every PC.
+   Only Light, Regular and Bold files exist, so each covers a range of weights
+   (e.g. 600 uses the real Bold rather than a faked one). */
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("fonts/RobotoCondensed-Light.ttf") format("truetype");
+  font-weight: 100 349;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("fonts/RobotoCondensed-LightItalic.ttf") format("truetype");
+  font-weight: 100 349;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("fonts/RobotoCondensed-Regular.ttf") format("truetype");
+  font-weight: 350 549;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("fonts/RobotoCondensed-Italic.ttf") format("truetype");
+  font-weight: 350 549;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("fonts/RobotoCondensed-Bold.ttf") format("truetype");
+  font-weight: 550 900;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   /* Palette: purple #845EC2, dark #4B4453, lavender #B0A8B9, rust #C34A36, coral #FF8066.
      Lavender and coral are too light for text on white, so they're used for fills,
@@ -26,7 +65,7 @@
   --s2: var(--coral);
   --s3: var(--dark);
   --s4: var(--lavender);
-  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Roboto Condensed", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   color: var(--ink);
 }
@@ -283,6 +322,19 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
   .grid-2, .grid-materials { grid-template-columns: 1fr; }
   .fc-inputs { grid-template-columns: 1fr; }
   .draw-stats, .draw-stats.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@page {
+  size: letter;
+  margin: 0.5in 0.5in 0.6in;
+  @bottom-left {
+    content: var(--report-title, "Cost Report");
+    font: 8px "Roboto Condensed", Arial, sans-serif; color: #666; vertical-align: top; padding-top: 0.2in;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font: 8px "Roboto Condensed", Arial, sans-serif; color: #666; vertical-align: top; padding-top: 0.2in;
+  }
 }
 
 @media print {
