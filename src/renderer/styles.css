@@ -359,6 +359,7 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
   @bottom-right {
     content: "Page " counter(page) " of " counter(pages);
     font: 9px "Roboto Condensed", Arial, sans-serif; color: #666; vertical-align: top; padding-top: 0.2in;
+    white-space: nowrap; width: 0.9in;
   }
 }
 /* The letterhead already names the job on page 1. */
@@ -394,7 +395,8 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
   .rp-section { margin-top: 20px; }
   .rp-keep { break-inside: avoid; }
   .rp-section > h2 { font-size: 13px; font-weight: 700; margin-bottom: 5px !important; break-after: avoid; }
-  .rp-gap + .rp-gap::before { content: ""; display: inline-block; width: 16px; }
+  .rp-gap { white-space: nowrap; display: inline-block; }
+  .rp-gap + .rp-gap { margin-left: 16px; }
   .rp-small { font-size: 9.5px; color: #555; margin: 0 0 6px !important; }
   .rp-end { margin-top: 24px !important; font-size: 9.5px; color: #555; }
 

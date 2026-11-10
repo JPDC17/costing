@@ -552,26 +552,35 @@ function renderAll() {
 
 // ---------- Company details & logo ----------
 
-// Load an image (any format the window can show), trim empty margins (transparent or
-// white), shrink it to fit 800x400 and return it as a PNG data URL.
+// Load an image (any format the window can show), trim empty margins, shrink it to
+// fit 800x400 and return { dataUrl (PNG), light (true if it's nearly all white) }.
+// Margins are transparent pixels for images with transparency, else white ones, so a
+// white logo on a transparent background is kept rather than trimmed away.
 function processLogo(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       let w = img.naturalWidth || 600, h = img.naturalHeight || 300;
       if (!w || !h) return reject(new Error('That image has no size.'));
-      // SVGs without a size come through tiny; draw them larger so they stay sharp.
-      const scaleUp = Math.max(1, Math.min(4, 400 / Math.max(w, h)));
-      w = Math.round(w * scaleUp); h = Math.round(h * scaleUp);
+      // SVGs without a size come through tiny, so draw them larger to stay sharp;
+      // very large photos are drawn smaller first so they don't use lots of memory.
+      const scale = Math.min(Math.max(1, Math.min(4, 400 / Math.max(w, h))), 2400 / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale)); h = Math.max(1, Math.round(h * scale));
       const c = document.createElement('canvas'); c.width = w; c.height = h;
-      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+      const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, 0, 0, w, h);
       const px = ctx.getImageData(0, 0, w, h).data;
-      let x0 = w, y0 = h, x1 = -1, y1 = -1;
+      let transparent = false;
+      for (let i = 3; i < px.length; i += 4) if (px[i] < 250) { transparent = true; break; }
+      let x0 = w, y0 = h, x1 = -1, y1 = -1, ink = 0, lightInk = 0;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = (y * w + x) * 4;
-          const empty = px[i + 3] < 12 || (px[i] > 244 && px[i + 1] > 244 && px[i + 2] > 244);
-          if (!empty) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+          const white = px[i] > 244 && px[i + 1] > 244 && px[i + 2] > 244;
+          const empty = transparent ? px[i + 3] < 12 : white;
+          if (!empty) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            ink++; if (px[i] > 225 && px[i + 1] > 225 && px[i + 2] > 225) lightInk++;
+          }
         }
       }
       if (x1 < 0) return reject(new Error('That image looks blank.'));
@@ -583,7 +592,7 @@ function processLogo(dataUrl) {
       out.width = Math.max(1, Math.round(cw * k)); out.height = Math.max(1, Math.round(ch * k));
       const o = out.getContext('2d'); o.imageSmoothingQuality = 'high';
       o.drawImage(c, x0, y0, cw, ch, 0, 0, out.width, out.height);
-      resolve(out.toDataURL('image/png'));
+      resolve({ dataUrl: out.toDataURL('image/png'), light: ink > 0 && lightInk / ink > 0.9 });
     };
     img.onerror = () => reject(new Error('That file isn’t an image the app can read.'));
     img.src = dataUrl;
@@ -612,16 +621,29 @@ function renderCompany() {
 }
 
 let companyTimer = null;
+let companyEdits = 0; // bumped on every change, so a slow save can't undo newer typing
 function saveCompanySoon() {
+  companyEdits++;
   clearTimeout(companyTimer);
   $('#companySaved').textContent = 'Saving…';
   companyTimer = setTimeout(saveCompanyNow, 400);
 }
 
-async function saveCompanyNow() {
+// Saves run one at a time, each sending the latest details, so an older save can
+// never finish after a newer one and leave old details on disk.
+let companyQueue = Promise.resolve();
+function saveCompanyNow() {
   clearTimeout(companyTimer);
+  companyQueue = companyQueue.then(writeCompany, writeCompany);
+  return companyQueue;
+}
+
+async function writeCompany() {
+  const edit = companyEdits;
   try {
-    state.company = await window.api.saveCompany(state.company);
+    const saved = await window.api.saveCompany({ ...state.company });
+    if (edit !== companyEdits) return; // newer changes are waiting to be saved
+    state.company = saved;
     $('#companySaved').textContent = 'Saved';
     renderBrand();
   } catch (err) {
@@ -634,10 +656,14 @@ async function uploadLogo() {
   try {
     const res = await window.api.pickLogo();
     if (!res) return;
-    state.company.logo = await processLogo(res.dataUrl);
+    const logo = await processLogo(res.dataUrl);
+    state.company.logo = logo.dataUrl;
+    companyEdits++;
     renderCompany();
     await saveCompanyNow();
-    toast('Logo added');
+    toast(logo.light
+      ? 'Logo added. It is very light, so it may not show up well on a white report; a darker version would print better.'
+      : 'Logo added');
   } catch (err) {
     toast(`Could not use that logo: ${errMsg(err)}`);
   }
@@ -654,11 +680,15 @@ function buildReport() {
   const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   // Text for the page margins on every page (see @page in styles.css).
   const css = document.documentElement.style;
-  css.setProperty('--report-footer', JSON.stringify(c.name ? `${c.name}, ${jobName}` : jobName));
-  css.setProperty('--report-running', JSON.stringify(jobName));
+  // Shortened if very long, so they never collide with the page number.
+  const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1).trimEnd()}…` : text);
+  css.setProperty('--report-footer', JSON.stringify(clip(c.name ? `${c.name}, ${jobName}` : jobName, 110)));
+  css.setProperty('--report-running', JSON.stringify(clip(jobName, 110)));
 
   const neg = v => (v < 0 ? ' neg' : '');
   const pct = Calc.formatPercent;
+  // Accounting style: amounts taken away are shown in brackets, e.g. ($534,168.47).
+  const acct = v => (Calc.round2(v) < 0 ? `(${money(-v)})` : money(v));
   const amt = (v, cls = '') => el('td', { class: `num${cls}`, text: money(v) });
 
   // --- Letterhead: logo and company details left, report title and date right.
@@ -709,14 +739,15 @@ function buildReport() {
         line(`Overhead at ${t.overheadPercent}%`, money(t.overhead)),
         line('Total costs', money(t.totalCosts), 'grand'),
       ]),
-      statement('Contract and billing', [
-        line('Contract value', money(t.totalContract)),
+      // Reads as a sum: draws submitted less total costs = profit to date.
+      statement('Billing to date', [
         line(`Progress draws submitted (${t.drawCount})`, money(t.draws)),
-        line('Less total costs', `(${money(t.totalCosts)})`),
+        line('Less total costs to date', acct(-t.totalCosts)),
         line('Profit to date', money(t.profitToDate), `grand${neg(t.profitToDate)}`),
       ]),
     ]),
     el('table', { class: 'rp-figures' }, el('tbody', {}, [
+      line('Contract value', money(t.totalContract)),
       line(`Margin on draws submitted`, pct(t.marginToDate)),
       line(`Paid by client (${t.drawsPaidCount} of ${t.drawCount} draws)`, money(t.drawsPaid)),
       line('Billed, not yet paid', money(t.drawsOutstanding)),
@@ -924,7 +955,7 @@ function init() {
     input.addEventListener('input', () => { state.company[input.dataset.company] = input.value; renderBrand(); saveCompanySoon(); });
   }
   $('#logoUpload').addEventListener('click', uploadLogo);
-  $('#logoRemove').addEventListener('click', async () => { state.company.logo = ''; renderCompany(); await saveCompanyNow(); toast('Logo removed'); });
+  $('#logoRemove').addEventListener('click', async () => { state.company.logo = ''; companyEdits++; renderCompany(); await saveCompanyNow(); toast('Logo removed'); });
   window.api.getSettings().then(s => { state.company = s.company; renderCompany(); }).catch(() => renderCompany());
 
   window.api.onMenu(run);

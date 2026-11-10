@@ -26,7 +26,7 @@ function friendly(err, what) {
 // Write to a temporary file first, then swap it in, so a crash or power cut
 // part-way through a save can never leave a half-written file.
 async function writeFileSafely(target, data) {
-  const tmp = `${target}.${process.pid}.tmp`;
+  const tmp = `${target}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`;
   try {
     await fs.writeFile(tmp, data);
     // On Windows, antivirus or backup software can lock a file for a moment; retry briefly.
