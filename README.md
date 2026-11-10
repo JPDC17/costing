@@ -144,11 +144,11 @@ appear:
 
 ## The PDF report
 
-A letterhead (logo, company details, report date), the project details, four key
-figures (contract value, total costs, profit to date, and forecast or contract profit),
-a two-column financial summary, the profit forecast, then every line item in clean
-tables with totals. Column headings repeat on each page, and the footer shows the
-company, job and page number.
+A plain, traditional cost report: a letterhead (logo, company details, report date),
+the job details, a summary statement of costs and of contract and billing, the profit
+forecast, then every line item in ruled tables. Totals have a rule above and a double
+rule below, as in accounts. No boxes or shading; black and grey on white. Column
+headings repeat on each page, and the footer shows the company, job and page number.
 
 ## Look and feel
 

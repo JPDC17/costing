@@ -654,154 +654,143 @@ function buildReport() {
   const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   // Text for the page margins on every page (see @page in styles.css).
   const css = document.documentElement.style;
-  css.setProperty('--report-footer', JSON.stringify([c.name, `${jobName} — Job Cost Report`].filter(Boolean).join('  ·  ')));
+  css.setProperty('--report-footer', JSON.stringify(c.name ? `${c.name}, ${jobName}` : jobName));
   css.setProperty('--report-running', JSON.stringify(jobName));
 
   const neg = v => (v < 0 ? ' neg' : '');
-  const pctText = Calc.formatPercent;
+  const pct = Calc.formatPercent;
+  const amt = (v, cls = '') => el('td', { class: `num${cls}`, text: money(v) });
 
-  // --- Letterhead: company logo and details on the left, document title on the right.
-  const contact = [c.phone, c.email, c.website].filter(Boolean).join('   ·   ');
-  const brand = (c.logo || c.name) ? el('div', { class: 'rp-brand' }, [
-    c.logo ? el('img', { class: 'rp-logo', src: c.logo, alt: '' }) : null,
-    el('div', { class: 'rp-co' }, [
-      c.name ? el('div', { class: 'rp-co-name', text: c.name }) : null,
-      c.address ? el('div', { class: 'rp-co-line', text: c.address.replace(/\n+/g, ', ') }) : null,
-      contact ? el('div', { class: 'rp-co-line', text: contact }) : null,
-    ]),
-  ]) : el('div');
+  // --- Letterhead: logo and company details left, report title and date right.
+  const contact = [c.phone, c.email, c.website].filter(Boolean);
   const head = el('header', { class: 'rp-head' }, [
-    brand,
+    el('div', { class: 'rp-brand' }, [
+      c.logo ? el('img', { class: 'rp-logo', src: c.logo, alt: '' }) : null,
+      (c.name || c.address || contact.length) ? el('div', { class: 'rp-co' }, [
+        c.name ? el('div', { class: 'rp-co-name', text: c.name }) : null,
+        c.address ? el('div', { text: c.address.replace(/\n+/g, ', ') }) : null,
+        contact.length ? el('div', {}, contact.map(x => el('span', { class: 'rp-gap', text: x }))) : null,
+      ]) : null,
+    ]),
     el('div', { class: 'rp-doc' }, [
       el('div', { class: 'rp-doc-title', text: 'Job Cost Report' }),
-      el('div', { class: 'rp-doc-date', text: today }),
+      el('div', { text: today }),
     ]),
   ]);
 
-  // --- Project block
-  const facts = [['Job number', j.jobNumber], ['Client', j.client], ['Site address', j.address]]
+  // --- Job details as plain "Label: value" lines.
+  const facts = [['Job number', j.jobNumber], ['Client', j.client], ['Site', j.address]]
     .filter(([, v]) => String(v || '').trim());
   const project = el('section', { class: 'rp-project' }, [
-    el('div', { class: 'rp-eyebrow', text: 'Project' }),
     el('h1', { text: jobName }),
-    facts.length ? el('dl', { class: 'rp-facts' }, facts.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })])) : null,
-  ]);
-
-  // --- Key figures
-  const kpi = (label, value, sub, cls = '') => el('div', { class: `rp-kpi${cls}` }, [
-    el('div', { class: 'rp-kpi-label', text: label }),
-    el('div', { class: 'rp-kpi-value', text: value }),
-    el('div', { class: 'rp-kpi-sub', text: sub }),
-  ]);
-  const kpis = el('section', { class: 'rp-kpis' }, [
-    kpi('Contract Value', money(t.totalContract), `${pctText(t.billedPercent)} billed · ${money(t.remainingToBill)} to bill`),
-    kpi('Total Costs', money(t.totalCosts), `Includes ${t.overheadPercent}% overhead`),
-    kpi('Profit to Date', money(t.profitToDate), `${pctText(t.marginToDate)} margin on draws billed`, ` accent${neg(t.profitToDate)}`),
-    f.ready
-      ? kpi('Forecast Profit', money(f.profit), `${pctText(f.margin)} margin at completion · ${fmtDays(f.daysRemaining)} left`, neg(f.profit))
-      : kpi('Contract Profit', money(t.profit), `${pctText(t.margin)} margin on costs to date`, neg(t.profit)),
+    facts.length ? el('p', { class: 'rp-facts' }, facts.flatMap(([k, v], i) => [
+      i ? el('span', { class: 'rp-sep', text: '' }) : null, el('span', { class: 'rp-k', text: `${k}: ` }), v,
+    ]).filter(Boolean)) : null,
   ]);
 
   const notes = String(j.notes || '').trim()
-    ? el('section', { class: 'rp-notes' }, [el('div', { class: 'rp-eyebrow', text: 'Notes' }), el('p', { text: j.notes })])
+    ? el('section', { class: 'rp-notes' }, [el('h2', { text: 'Notes' }), el('p', { text: j.notes })])
     : null;
 
-  // --- Financial summary: two side-by-side statements
-  const row = (label, value, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: value })]);
+  // --- Summary: a plain two-column statement, like an accountant's cost report.
+  const line = (label, value, cls = '') => el('tr', { class: cls }, [el('td', { text: label }), el('td', { class: 'num', text: value })]);
   const statement = (title, rows) => el('div', { class: 'rp-statement' }, [
     el('h3', { text: title }),
     el('table', {}, el('tbody', {}, rows)),
   ]);
   const summary = el('section', { class: 'rp-section rp-keep' }, [
-    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Financial Summary' })]),
+    el('h2', { text: 'Summary' }),
     el('div', { class: 'rp-two' }, [
-      statement('Costs', [
-        row('Labour', money(t.labour)),
-        row('Equipment', money(t.equipment)),
-        row('Material and Supplier', money(t.materials)),
-        row('Subtotal', money(t.subtotal), 'sub'),
-        row(`Overhead (${t.overheadPercent}%)`, money(t.overhead)),
-        row('Total Costs', money(t.totalCosts), 'total'),
-        row('Unpaid supplier invoices', `${money(t.materialsUnpaid)}`, 'note'),
+      statement('Costs to date', [
+        line('Labour', money(t.labour)),
+        line('Equipment', money(t.equipment)),
+        line('Material and supplier', money(t.materials)),
+        line('Subtotal', money(t.subtotal), 'sub'),
+        line(`Overhead at ${t.overheadPercent}%`, money(t.overhead)),
+        line('Total costs', money(t.totalCosts), 'grand'),
       ]),
-      statement('Contract & Billing', [
-        row('Total Contract Value', money(t.totalContract)),
-        row(`Draws submitted (${t.drawCount})`, money(t.draws)),
-        row(`Paid by client (${t.drawsPaidCount} of ${t.drawCount})`, money(t.drawsPaid), 'indent'),
-        row('Outstanding', money(t.drawsOutstanding), 'indent'),
-        row('Remaining to bill', money(t.remainingToBill)),
-        row('Profit to Date', money(t.profitToDate), `total${neg(t.profitToDate)}`),
-        row('Contract profit (costs to date)', `${money(t.profit)}  ·  ${pctText(t.margin)}`, 'note'),
+      statement('Contract and billing', [
+        line('Contract value', money(t.totalContract)),
+        line(`Progress draws submitted (${t.drawCount})`, money(t.draws)),
+        line('Less total costs', `(${money(t.totalCosts)})`),
+        line('Profit to date', money(t.profitToDate), `grand${neg(t.profitToDate)}`),
       ]),
     ]),
-    t.changeOrders ? el('p', { class: 'rp-footnote', text: `Change orders of ${money(t.changeOrders)} are tracked separately and not included in the contract value.` }) : null,
+    el('table', { class: 'rp-figures' }, el('tbody', {}, [
+      line(`Margin on draws submitted`, pct(t.marginToDate)),
+      line(`Paid by client (${t.drawsPaidCount} of ${t.drawCount} draws)`, money(t.drawsPaid)),
+      line('Billed, not yet paid', money(t.drawsOutstanding)),
+      line(`Remaining to bill (${pct(t.billedPercent)} of contract billed)`, money(t.remainingToBill)),
+      line(`Contract profit on costs to date (${pct(t.margin)})`, money(t.profit), neg(t.profit).trim()),
+      f.ready ? line(`Forecast profit at completion (${pct(f.margin)})`, money(f.profit), `strong${neg(f.profit)}`) : null,
+      line(`Supplier invoices not yet paid (${t.materialsUnpaidCount})`, money(t.materialsUnpaid)),
+    ].filter(Boolean))),
+    t.changeOrders ? el('p', { class: 'rp-small', text: `Change orders totalling ${money(t.changeOrders)} are listed below but are not included in the contract value.` }) : null,
   ]);
 
   // --- Forecast
-  const frow = (label, a, b, cc, cls = '') => el('tr', { class: cls }, [el('th', { text: label }), el('td', { text: a }), el('td', { text: b }), el('td', { text: cc })]);
+  const frow = (label, a, b, cc, cls = '') => el('tr', { class: cls }, [el('td', { text: label }), el('td', { class: 'num', text: a }), el('td', { class: 'num', text: b }), el('td', { class: 'num', text: cc })]);
   const forecast = f.ready ? el('section', { class: 'rp-section rp-keep' }, [
-    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Profit Forecast' }), el('span', { class: 'rp-h2-meta', text: `${fmtDays(f.daysWorked)} worked · ${fmtDays(f.daysRemaining)} remaining` })]),
-    el('p', { class: 'rp-lead', text: `Labour and equipment carried forward at ${money(f.perDay)} per day (${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). Materials still to buy: ${money(f.materialsRemaining)}.` }),
-    el('table', { class: 'rp-table rp-num3' }, [
-      el('thead', {}, el('tr', {}, ['', 'To date', 'Remaining', 'At completion'].map(h => el('th', { text: h })))),
+    el('h2', { text: 'Profit forecast' }),
+    el('p', { class: 'rp-small', text: `${fmtDays(f.daysWorked)} worked, ${fmtDays(f.daysRemaining)} remaining. Labour and equipment are carried forward at ${money(f.perDay)} a day (${money(f.labourPerDay)} labour, ${money(f.equipmentPerDay)} equipment). Materials still to buy: ${money(f.materialsRemaining)}.` }),
+    el('table', { class: 'rp-table' }, [
+      el('colgroup', {}, [el('col'), ...[0, 1, 2].map(() => { const e = el('col'); e.style.width = '19%'; return e; })]),
+      el('thead', {}, el('tr', {}, ['', 'To date', 'Remaining', 'At completion'].map((h, i) => el('th', { class: i ? 'num' : '', text: h })))),
       el('tbody', {}, [
         frow('Labour', money(t.labour), money(f.labourRemaining), money(f.labour)),
         frow('Equipment', money(t.equipment), money(f.equipmentRemaining), money(f.equipment)),
-        frow('Material and Supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
-        frow(`Overhead (${t.overheadPercent}%)`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
-        frow('Total Costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'total'),
-        frow('Total Contract Value', '', '', money(t.totalContract)),
-        frow('Forecast Profit', '', '', money(f.profit), `total${neg(f.profit)}`),
-        frow('Forecast Margin', '', '', pctText(f.margin)),
+        frow('Material and supplier', money(t.materials), money(f.materialsRemaining), money(f.materials)),
+        frow(`Overhead at ${t.overheadPercent}%`, money(t.overhead), money(f.overheadRemaining), money(f.overhead)),
+        frow('Total costs', money(t.totalCosts), money(f.costToComplete), money(f.totalCosts), 'sub'),
+        frow('Contract value', '', '', money(t.totalContract)),
+        frow('Forecast profit', '', '', money(f.profit), `grand${neg(f.profit)}`),
       ]),
     ]),
   ]) : null;
 
   // --- Detail tables
-  const detail = (title, key, cols, meta) => {
+  const detail = (title, key, cols, note) => {
     const rows = j[key].filter(x => !Calc.isBlankRow(x));
     const cell = (col, text) => el('td', { class: col.money ? 'num' : col.check ? 'ctr' : '', text });
-    const value = (x, col) => (col.money ? money(x[col.key]) : col.check ? (Calc.isPaid(x) ? 'Paid' : '—') : (x[col.key] || ''));
-    const count = `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`;
+    const value = (x, col) => (col.money ? money(x[col.key]) : col.check ? (Calc.isPaid(x) ? 'Paid' : '') : (x[col.key] || ''));
     return el('section', { class: `rp-section${rows.length <= 12 ? ' rp-keep' : ''}` }, [
-      el('h2', { class: 'rp-h2' }, [el('span', { text: title }), el('span', { class: 'rp-h2-meta', text: rows.length ? `${count} · ${money(Calc.sum(rows))}` : 'None' })]),
-      meta ? el('p', { class: 'rp-lead', text: meta }) : null,
+      el('h2', { text: title }),
+      note ? el('p', { class: 'rp-small', text: note }) : null,
       rows.length ? el('table', { class: 'rp-table' }, [
         el('colgroup', {}, cols.map(col => { const e = el('col'); if (col.w) e.style.width = col.w; return e; })),
         el('thead', {}, el('tr', {}, cols.map(col => el('th', { class: col.money ? 'num' : col.check ? 'ctr' : '', text: col.label })))),
-        el('tbody', {}, rows.map(x => el('tr', { class: cols.some(col => col.check) && Calc.isPaid(x) ? 'is-paid' : '' }, cols.map(col => cell(col, value(x, col)))))),
-        el('tbody', { class: 'rp-total' }, el('tr', {}, cols.map((col, i) => cell(col,
-          col.money ? money(Calc.sum(rows)) : col.check ? `${rows.filter(Calc.isPaid).length} of ${rows.length}` : (i === 0 ? 'Total' : ''))))),
-      ]) : null,
+        el('tbody', {}, rows.map(x => el('tr', {}, cols.map(col => cell(col, value(x, col)))))),
+        el('tbody', { class: 'rp-total' }, el('tr', { class: 'grand' }, cols.map((col, i) => cell(col,
+          col.money ? money(Calc.sum(rows)) : col.check ? `${rows.filter(Calc.isPaid).length} of ${rows.length}` : (i === 0 ? `Total (${rows.length})` : ''))))),
+      ]) : el('p', { class: 'rp-small', text: 'None recorded.' }),
     ]);
   };
-  const dated = [{ key: 'date', label: 'Date(s)', w: '22%' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }];
+  const dated = [{ key: 'date', label: 'Date', w: '22%' }, { key: 'description', label: 'Description' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }];
   const suppliers = Calc.supplierTotals(j.materials);
   const supplierSection = suppliers.length ? el('section', { class: 'rp-section rp-keep' }, [
-    el('h2', { class: 'rp-h2' }, [el('span', { text: 'Totals by Supplier' }), el('span', { class: 'rp-h2-meta', text: `${suppliers.length} ${suppliers.length === 1 ? 'company' : 'companies'}` })]),
+    el('h2', { text: 'Totals by supplier' }),
     el('table', { class: 'rp-table rp-half' }, [
-      el('thead', {}, el('tr', {}, [el('th', { text: 'Company' }), el('th', { class: 'num', text: 'Total' })])),
+      el('thead', {}, el('tr', {}, [el('th', { text: 'Supplier' }), el('th', { class: 'num', text: 'Total' })])),
       el('tbody', {}, suppliers.map(x => el('tr', {}, [el('td', { text: x.supplier }), el('td', { class: 'num', text: money(x.total) })]))),
-      el('tbody', { class: 'rp-total' }, el('tr', {}, [el('td', { text: 'Total' }), el('td', { class: 'num', text: money(t.materials) })])),
+      el('tbody', { class: 'rp-total' }, el('tr', { class: 'grand' }, [el('td', { text: 'Total' }), el('td', { class: 'num', text: money(t.materials) })])),
     ]),
   ]) : null;
 
   $('#report').replaceChildren(...[
     head,
     project,
-    kpis,
     notes,
     summary,
     forecast,
-    detail('Approved Quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }]),
-    detail('Change Orders', 'changeOrders', [{ key: 'description', label: 'Change order' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '18%' }],
-      j.changeOrders.some(x => !Calc.isBlankRow(x)) ? 'Tracked separately; not included in the contract value.' : ''),
-    detail('Progress Draws', 'draws', [{ key: 'drawNumber', label: 'Draw', w: '8%' }, { key: 'date', label: 'Submitted', w: '14%' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes', w: '20%' }, { key: 'paid', label: 'Status', check: true, w: '10%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
+    detail('Approved quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }]),
+    detail('Change orders', 'changeOrders', [{ key: 'description', label: 'Change order' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }],
+      j.changeOrders.some(x => !Calc.isBlankRow(x)) ? 'Not included in the contract value.' : ''),
+    detail('Progress draws', 'draws', [{ key: 'drawNumber', label: 'No.', w: '7%' }, { key: 'date', label: 'Submitted', w: '14%' }, { key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes', w: '20%' }, { key: 'paid', label: 'Paid', check: true, w: '9%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
     detail('Labour', 'labour', dated),
     detail('Equipment', 'equipment', dated),
-    detail('Material and Supplier Invoices', 'materials', [{ key: 'supplier', label: 'Supplier', w: '26%' }, { key: 'invoiceNumber', label: 'Invoice', w: '14%' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Status', check: true, w: '10%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
+    detail('Material and supplier invoices', 'materials', [{ key: 'supplier', label: 'Supplier', w: '26%' }, { key: 'invoiceNumber', label: 'Invoice', w: '14%' }, { key: 'notes', label: 'Notes' }, { key: 'paid', label: 'Paid', check: true, w: '9%' }, { key: 'amount', label: 'Amount', money: true, w: '16%' }]),
     supplierSection,
-    el('p', { class: 'rp-end', text: `Prepared ${today}${c.name ? ` by ${c.name}` : ''}. Figures are rounded to the cent.` }),
+    el('p', { class: 'rp-end', text: `Prepared ${c.name ? `by ${c.name} ` : ''}on ${today}.` }),
   ].filter(Boolean));
 }
 

@@ -243,13 +243,12 @@ ipcMain.handle('pdf:export', async (_e, jobName) => {
   if (res.canceled || !res.filePath) return null;
   // Page size, margins and the footer (job name, page numbers) come from the report's
   // @page CSS, so the footer uses the app's own font.
-  // Printing backgrounds (for the tinted headings and cards) also paints the page
-  // margins in the window's background colour, so make it white while printing.
+  // Keep the page margins white even if a report ever uses shading.
   win.setBackgroundColor('#ffffff');
   let data;
   try {
     data = await win.webContents.printToPDF({
-      printBackground: true,
+      printBackground: false,
       preferCSSPageSize: true,
     });
   } finally {
