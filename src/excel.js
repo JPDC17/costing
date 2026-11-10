@@ -268,7 +268,7 @@ async function exportWorkbook(job, filePath) {
     const c = wsT.getCell(row, 2);
     c.value = value === null ? null : value;
     c.numFmt = fmt;
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECE5F7' } }; // light purple from the app palette
     c.border = { top: { style: 'thin', color: { argb: 'FFBFBFBF' } }, bottom: { style: 'thin', color: { argb: 'FFBFBFBF' } }, left: { style: 'thin', color: { argb: 'FFBFBFBF' } }, right: { style: 'thin', color: { argb: 'FFBFBFBF' } } };
   };
   const dwRow = tr; input(tr++, 'Days Worked to Date', f.daysWorked || null, '0.##');

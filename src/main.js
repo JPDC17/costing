@@ -62,7 +62,8 @@ function createWindow() {
     minWidth: Math.min(900, area.width),
     minHeight: Math.min(560, area.height),
     title: 'Job Costing',
-    backgroundColor: '#f5f6f8',
+    backgroundColor: '#f6f4f8',
+    icon: path.join(__dirname, 'renderer', 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
