@@ -24,7 +24,9 @@ jobs:
         run: |
           node scripts/bundle.js
           npx electron-builder --win portable --x64 --publish never -c.directories.output=perf-new
-          ls -l perf-new/*.exe
+          npx electron-builder --win portable --x64 --publish never -c.directories.output=perf-normal -c.compression=normal
+          npx electron-builder --win portable --x64 --publish never -c.directories.output=perf-store -c.compression=store
+          ls -l perf-new/*.exe perf-normal/*.exe perf-store/*.exe
       - name: Download the published release
         shell: bash
         env:
@@ -38,4 +40,6 @@ jobs:
           .\scripts\perf-startup-windows.ps1 -Variants @(
             "old portable (release)=$PWD\perf-old\JobCosting-Portable.exe",
             "new portable=$PWD\perf-new\JobCosting-Portable.exe",
+            "new portable, normal compression=$PWD\perf-normal\JobCosting-Portable.exe",
+            "new portable, no compression=$PWD\perf-store\JobCosting-Portable.exe",
             "new unpacked (like installed)=$PWD\perf-new\win-unpacked\Job Costing.exe")
