@@ -103,8 +103,10 @@ are shaded cells: change them in Excel and the forecast recalculates.
 
 ## Windows app (.exe)
 
-**Ready to run:** `dist/JobCosting-Portable.exe` is one **portable** file, so there's no
-installer and nothing gets written to Program Files. Copy it anywhere and double-click it.
+**Download:** https://github.com/JPDC17/costing/releases/latest/download/JobCosting-Portable.exe
+
+It's one **portable** file, so there's no installer and nothing gets written to Program Files.
+Copy it anywhere and double-click it. Later versions install from inside the app (see Updates).
 
 - It isn't signed (no paid code-signing certificate), so Windows SmartScreen will probably
   show an "unknown publisher" warning the first time. Click **More info → Run anyway**.
@@ -133,18 +135,27 @@ From version 1.1.0 the app can update itself:
   the old one and opens it again. If the swap can't be done (for example, the exe is in a
   read-only folder), the new version is opened from where it was downloaded instead.
 
-**Publishing an update** (for whoever builds the app):
+**Publishing an update** (GitHub builds and publishes it for you):
 
-1. Raise `"version"` in `package.json` (e.g. 1.1.0 → 1.2.0).
-2. Run `npm run release`. This builds `dist/JobCosting-Portable.exe` and writes `latest.json`
-   (version, download address, size and checksum). Add notes with
-   `node scripts/write-manifest.js "What changed"`.
-3. Commit and push both files. Everyone's app will offer the update.
+1. Raise `"version"` in `package.json` (e.g. 1.2.0 → 1.3.0), commit and push.
+2. Tag that commit with the same version and a short note of what changed, then push the tag:
 
-The app reads `latest.json` and the exe from the addresses under `"updates"` in
-`package.json` (currently this repository's `claude/tender-tesla-clm33c` branch). If the
-files move, for example to `main`, update those addresses and publish a new version; copies
-already installed keep checking the old address until they've updated once.
+   ```bash
+   git tag -a v1.3.0 -m "What changed in this version"
+   git push origin v1.3.0
+   ```
+
+3. The **Release** workflow (`.github/workflows/release.yml`) runs on a Windows machine:
+   it runs the tests, tests the update swap in real Windows PowerShell, builds the exe and
+   publishes a GitHub Release containing `JobCosting-Portable.exe` and `latest.json`. The
+   tag's note is shown in the app's update prompt. Everyone's app then offers the update.
+
+The app checks `https://github.com/JPDC17/costing/releases/latest/download/latest.json`
+(set under `"updates"` in `package.json`). Exes are no longer committed to the repository,
+so it doesn't grow with each version. Every push also runs the tests on Windows.
+
+To build an exe locally without publishing anything: `npm run release` (writes `dist/` and
+`latest.json`, which are not committed).
 
 ## Running from source
 

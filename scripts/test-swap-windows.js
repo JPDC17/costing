@@ -20,7 +20,10 @@ if (process.platform !== 'win32') {
 }
 
 const fail = msg => { console.error(`FAIL: ${msg}`); process.exitCode = 1; };
-const ps = (args, opts = {}) => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', ...args], { encoding: 'utf8', timeout: 180000, ...opts });
+// GitHub's machines force scripts on with this variable; real PCs don't have it.
+const env = { ...process.env };
+delete env.PSExecutionPolicyPreference;
+const ps = (args, opts = {}) => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', ...args], { encoding: 'utf8', timeout: 180000, env, ...opts });
 const sys32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swap test O\'Brien\u2019s '));
@@ -38,7 +41,8 @@ ps(['-Command', 'Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restric
 const probe = path.join(dir, 'probe.ps1');
 fs.writeFileSync(probe, "'script ran'");
 const blocked = ps(['-File', probe]);
-console.log(`Execution policy now: ${ps(['-Command', 'Get-ExecutionPolicy']).stdout.trim()}; a .ps1 file ${/script ran/.test(blocked.stdout) ? 'still RAN' : 'is blocked'}.`);
+console.log(`Execution policies:\n${ps(['-Command', 'Get-ExecutionPolicy -List | Out-String']).stdout.trim()}`);
+console.log(`A .ps1 file ${/script ran/.test(blocked.stdout) ? 'still RAN' : 'is blocked'}${blocked.stderr ? ` (${blocked.stderr.trim().split('\n')[0]})` : ''}.`);
 if (/script ran/.test(blocked.stdout)) fail('could not set up a "scripts disabled" PC for the test');
 
 (async () => {
@@ -46,7 +50,7 @@ if (/script ran/.test(blocked.stdout)) fail('could not set up a "scripts disable
     // Hold the old exe open for 5 seconds without delete sharing (like a running app).
     const marker = path.join(dir, 'locked.txt');
     const holder = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `$f = [System.IO.File]::Open(${U.psQuote(target)}, 'Open', 'Read', 'Read'); Set-Content -LiteralPath ${U.psQuote(marker)} -Value 1; Start-Sleep -Seconds 5; $f.Close()`], { stdio: 'inherit' });
+      `$f = [System.IO.File]::Open(${U.psQuote(target)}, 'Open', 'Read', 'Read'); Set-Content -LiteralPath ${U.psQuote(marker)} -Value 1; Start-Sleep -Seconds 5; $f.Close()`], { stdio: 'inherit', env });
     for (let i = 0; i < 100 && !fs.existsSync(marker); i++) await new Promise(r => setTimeout(r, 200));
     if (!fs.existsSync(marker)) fail('the lock holder did not start');
 
@@ -58,7 +62,9 @@ if (/script ran/.test(blocked.stdout)) fail('could not set up a "scripts disable
 
     console.log(`Swap finished in ${secs.toFixed(1)}s with exit code ${run.status}.`);
     if (run.stderr && run.stderr.trim()) console.log(`stderr: ${run.stderr.trim()}`);
-    console.log(`Update log:\n${fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '(missing)'}`);
+    const logText = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '(missing)';
+    console.log(`Update log:\n${logText}`);
+    if (!logText.includes(target)) fail('the log does not show the full folder name (apostrophes garbled?)');
     if (run.status !== 0) fail('PowerShell exited with an error');
     if (!fs.readFileSync(target).equals(wanted)) fail('the old exe was not replaced by the new one');
     if (secs < 2) fail('the swap did not wait for the old exe to be released');

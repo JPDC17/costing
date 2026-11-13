@@ -47,8 +47,9 @@ function validateManifest(m, extraPrefixes = []) {
 // start the new version from where it was downloaded instead, so the person still gets
 // the update. $New and $Target are set in front of this by swapCommand().
 const POWERSHELL_SWAP = String.raw`$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $log = Join-Path $env:TEMP 'JobCosting-update.log'
-function Write-Log([string]$m) { Add-Content -LiteralPath $log -Value ((Get-Date -Format s) + '  ' + $m) }
+function Write-Log([string]$m) { Add-Content -LiteralPath $log -Encoding UTF8 -Value ((Get-Date -Format s) + '  ' + $m) }
 Write-Log ('Updating ' + $Target)
 $staged = $Target + '.new'
 $backup = $Target + '.old'
