@@ -20,9 +20,12 @@ if (process.platform !== 'win32') {
 }
 
 const fail = msg => { console.error(`FAIL: ${msg}`); process.exitCode = 1; };
-// GitHub's machines force scripts on with this variable; real PCs don't have it.
+// GitHub's machines force scripts on with PSExecutionPolicyPreference, and this step runs
+// under PowerShell 7, whose PSModulePath stops Windows PowerShell 5 loading its own
+// modules. Real PCs have neither; the app clears PSModulePath the same way.
 const env = { ...process.env };
 delete env.PSExecutionPolicyPreference;
+delete env.PSModulePath;
 const ps = (args, opts = {}) => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', ...args], { encoding: 'utf8', timeout: 180000, env, ...opts });
 const sys32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
 
@@ -36,11 +39,14 @@ const wanted = fs.readFileSync(fresh);
 const log = path.join(os.tmpdir(), 'JobCosting-update.log');
 try { fs.unlinkSync(log); } catch { /* none yet */ }
 
-// Disable scripts for this user, and check a plain .ps1 is now refused.
+// Scripts disabled, as on many company PCs: set it for this user, and also run every
+// PowerShell below in the strictest mode (-ExecutionPolicy Restricted). Check that a
+// plain .ps1 file really is refused, so the test means something.
 ps(['-Command', 'Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restricted -Force']);
+const strict = ['-ExecutionPolicy', 'Restricted'];
 const probe = path.join(dir, 'probe.ps1');
 fs.writeFileSync(probe, "'script ran'");
-const blocked = ps(['-File', probe]);
+const blocked = ps([...strict, '-File', probe]);
 console.log(`Execution policies:\n${ps(['-Command', 'Get-ExecutionPolicy -List | Out-String']).stdout.trim()}`);
 console.log(`A .ps1 file ${/script ran/.test(blocked.stdout) ? 'still RAN' : 'is blocked'}${blocked.stderr ? ` (${blocked.stderr.trim().split('\n')[0]})` : ''}.`);
 if (/script ran/.test(blocked.stdout)) fail('could not set up a "scripts disabled" PC for the test');
@@ -56,7 +62,7 @@ if (/script ran/.test(blocked.stdout)) fail('could not set up a "scripts disable
 
     // The same command the app runs.
     const t0 = Date.now();
-    const run = ps(['-WindowStyle', 'Hidden', '-EncodedCommand', U.swapCommand(fresh, target)]);
+    const run = ps([...strict, '-WindowStyle', 'Hidden', '-EncodedCommand', U.swapCommand(fresh, target)]);
     const secs = (Date.now() - t0) / 1000;
     await new Promise(r => holder.on('exit', r));
 

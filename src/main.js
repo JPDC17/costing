@@ -374,7 +374,11 @@ async function installUpdate(m) {
   const newExe = path.join(dir, `JobCosting-Portable-${m.version}.exe`);
   await fs.writeFile(newExe, Buffer.concat(chunks));
   try {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Updater.swapCommand(newExe, portableExe)], { detached: true, stdio: 'ignore', windowsHide: true });
+    // Windows PowerShell rebuilds its own module path; one inherited from PowerShell 7
+    // (if the app was started from a PowerShell 7 window) can stop it loading its commands.
+    const env = { ...process.env };
+    delete env.PSModulePath;
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Updater.swapCommand(newExe, portableExe)], { detached: true, stdio: 'ignore', windowsHide: true, env });
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     child.unref();
   } catch {
