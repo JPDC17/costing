@@ -42,6 +42,7 @@ jobs:
         run: node scripts/test-swap-windows.js
 
       - name: Build test copies (current, and a fake newer 9.9.9)
+        shell: bash
         run: |
           npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-old
           npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-new -c.extraMetadata.version=9.9.9
