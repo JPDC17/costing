@@ -44,6 +44,7 @@ jobs:
       - name: Build test copies (current, and a fake newer 9.9.9)
         shell: bash
         run: |
+          node scripts/bundle.js
           npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-old
           npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-new -c.extraMetadata.version=9.9.9
 
@@ -69,7 +70,10 @@ jobs:
 
       - name: Build the portable exe
         if: steps.version.outputs.publish == 'true'
-        run: npx electron-builder --win portable --x64 --publish never
+        shell: bash
+        run: |
+          node scripts/bundle.js
+          npx electron-builder --win portable --x64 --publish never
 
       - name: Write latest.json
         if: steps.version.outputs.publish == 'true'

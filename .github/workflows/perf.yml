@@ -1,0 +1,41 @@
+# Startup timing on Windows: the published release vs. the current code, both as the
+# portable exe and unpacked (as an installed app would run). Runs when this file or the
+# timing script changes, or on demand.
+name: Startup timing
+
+on:
+  push:
+    branches: [claude/tender-tesla-clm33c, main]
+    paths: [.github/workflows/perf.yml, scripts/perf-startup-windows.ps1]
+  workflow_dispatch:
+
+jobs:
+  timing:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the current code
+        shell: bash
+        run: |
+          node scripts/bundle.js
+          npx electron-builder --win portable --x64 --publish never -c.directories.output=perf-new
+          ls -l perf-new/*.exe
+      - name: Download the published release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --pattern JobCosting-Portable.exe --dir perf-old
+          ls -l perf-old/*.exe
+      - name: Time startup
+        shell: powershell
+        run: |
+          .\scripts\perf-startup-windows.ps1 -Variants @(
+            "old portable (release)=$PWD\perf-old\JobCosting-Portable.exe",
+            "new portable=$PWD\perf-new\JobCosting-Portable.exe",
+            "new unpacked (like installed)=$PWD\perf-new\win-unpacked\Job Costing.exe")

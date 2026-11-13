@@ -7,25 +7,25 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win portable --x64",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
-    "release": "electron-builder --win portable --x64 --publish never && node scripts/write-manifest.js"
+    "dist": "node scripts/bundle.js && electron-builder",
+    "dist:win": "node scripts/bundle.js && electron-builder --win portable --x64",
+    "dist:mac": "node scripts/bundle.js && electron-builder --mac",
+    "dist:linux": "node scripts/bundle.js && electron-builder --linux",
+    "release": "node scripts/bundle.js && electron-builder --win portable --x64 --publish never && node scripts/write-manifest.js",
+    "bundle": "node scripts/bundle.js"
   },
   "license": "UNLICENSED",
-  "dependencies": {
-    "exceljs": "^4.4.0"
-  },
   "devDependencies": {
     "electron": "^44.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.10",
+    "exceljs": "^4.4.0"
   },
   "build": {
     "appId": "com.jobcosting.app",
     "productName": "Job Costing",
     "files": [
-      "src/**/*",
+      "bundle/**/*",
       "package.json"
     ],
     "fileAssociations": [
@@ -67,7 +67,10 @@
     "compression": "maximum",
     "electronLanguages": [
       "en-US"
-    ]
+    ],
+    "extraMetadata": {
+      "main": "bundle/main.js"
+    }
   },
   "updates": {
     "manifest": "https://github.com/JPDC17/costing/releases/latest/download/latest.json",

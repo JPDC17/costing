@@ -5,7 +5,9 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const Updater = require('./updater');
 const pkg = require('../package.json');
-const { exportWorkbook, importWorkbook } = require('./excel');
+// The Excel library is only loaded the first time a workbook is exported or imported,
+// so it doesn't slow down starting the app.
+const excel = () => require('./excel');
 const Calc = require('./calc');
 const Company = require('./company');
 
@@ -233,7 +235,7 @@ ipcMain.handle('excel:export', async (_e, job) => {
   });
   if (res.canceled || !res.filePath) return null;
   try {
-    await exportWorkbook(job, res.filePath, (await readSettings()).company);
+    await excel().exportWorkbook(job, res.filePath, (await readSettings()).company);
   } catch (err) {
     throw friendly(err, 'exporting');
   }
@@ -243,7 +245,7 @@ ipcMain.handle('excel:export', async (_e, job) => {
 ipcMain.handle('excel:import', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: XLSX_FILTERS });
   if (res.canceled || !res.filePaths.length) return null;
-  return { job: await importWorkbook(res.filePaths[0]), filePath: res.filePaths[0] };
+  return { job: await excel().importWorkbook(res.filePaths[0]), filePath: res.filePaths[0] };
 });
 
 ipcMain.handle('pdf:export', async (_e, jobName) => {
@@ -411,6 +413,10 @@ async function e2eHooks() {
   const marker = process.env.JOB_COSTING_E2E_MARKER;
   const note = async text => { if (marker) await fs.appendFile(marker, `${new Date().toISOString()} ${app.getVersion()} ${text}\n`).catch(() => {}); };
   await note(`started (exe ${process.env.PORTABLE_EXECUTABLE_FILE || '-'})`);
+  if (win) {
+    const ready = () => note('window ready');
+    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', ready); else ready();
+  }
   if (process.env.JOB_COSTING_E2E_AUTOUPDATE !== '1') return;
   try {
     const { m, available } = await checkForUpdate();
