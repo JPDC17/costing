@@ -1,1 +1,1 @@
-Fixes in-app updates: the app now restarts into the new version after downloading it. (Updating from 1.1.x or 1.2.0 needs one manual download; after that, the update button works.)
+Smaller and slightly quicker to start: the app no longer carries about 45 MB of unused library files. No changes to your jobs, reports or Excel files.
