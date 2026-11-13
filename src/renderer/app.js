@@ -943,6 +943,7 @@ const commands = {
     } catch (err) { toast(`Could not export: ${errMsg(err)}`); }
   },
   checkUpdates() { return checkUpdates(false); },
+  toggleTheme: () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'),
   async exportPdf() {
     buildReport();
     try {
@@ -951,6 +952,22 @@ const commands = {
     } catch (err) { toast(`Could not export PDF: ${errMsg(err)}`); }
   },
 };
+
+// ---------- Light / dark theme ----------
+// The theme is applied before the first paint by theme.js; this switches it and
+// remembers the choice for next time. The PDF report is always black on white.
+
+const currentTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+
+function renderThemeToggle() {
+  $('#themeToggle').setAttribute('aria-checked', String(currentTheme() === 'dark'));
+}
+
+async function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  renderThemeToggle();
+  try { await window.api.saveTheme(theme); } catch (err) { toast(`Could not save the theme: ${errMsg(err)}`); }
+}
 
 function run(cmd) {
   if (commands[cmd]) commands[cmd]();
@@ -1015,6 +1032,8 @@ function init() {
   });
   $('#updateBtn').addEventListener('click', offerUpdate);
   $('#versionBtn').addEventListener('click', () => checkUpdates(false));
+  $('#themeToggle').addEventListener('click', commands.toggleTheme);
+  renderThemeToggle();
   setTimeout(() => checkUpdates(true), 4000); // quiet check shortly after starting
   window.api.onRequestClose(async () => {
     if (await confirmIfDirty()) window.api.closeConfirmed();

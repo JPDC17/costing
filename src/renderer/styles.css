@@ -66,9 +66,42 @@
   --s2: var(--yellow);
   --s3: var(--charcoal);
   --s4: var(--steel);
+  --field: #ffffff;         /* text boxes */
+  --btn: #ffffff;
+  --btn-hover: #fff8eb;
+  --row-hover: #fafafa;
+  --placeholder: #8a8e94;
+  --toast-bg: var(--charcoal);
+  color-scheme: light;
   font-family: "Roboto Condensed", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   color: var(--ink);
+}
+
+/* Dark mode (the toggle at the bottom of the sidebar, or View > Dark Mode). Same palette:
+   orange and yellow stay as fills with charcoal text; text colours are lightened so they
+   stay readable on the dark panels. The PDF report is unaffected (always black on white). */
+:root[data-theme="dark"] {
+  --orange-text: #ffb547;
+  --bg: #121417;
+  --panel: #1b1e23;
+  --ink: #e8e9eb;
+  --muted: #a4a8af;
+  --line: #2c3036;
+  --line-strong: #434850;
+  --accent-soft: #4d3510;
+  --nav: #0c0d0f;
+  --nav-active: #23262c;
+  --neg: #ff8a80;
+  --neg-soft: #3d2120;
+  --s3: #d0d3d8;
+  --field: #15171b;
+  --btn: #23262c;
+  --btn-hover: #2f2b23;
+  --row-hover: #20232a;
+  --placeholder: #7d8188;
+  --toast-bg: #2c3036;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -97,11 +130,13 @@ button, input, textarea { font: inherit; color: inherit; }
   flex-shrink: 0;
   font-weight: 700;
   letter-spacing: .02em;
-  color: var(--charcoal);
+  color: var(--ink);
   display: flex; align-items: center; gap: 8px;
 }
 .brand img { width: 30px; height: 30px; display: block; flex-shrink: 0; }
 .brand img.custom { width: auto; max-width: 200px; height: 32px; object-fit: contain; object-position: left center; }
+/* Company logos are usually made for white paper, so give them a white backing in dark mode. */
+[data-theme="dark"] .brand img.custom { background: #fff; padding: 2px 6px; border-radius: 4px; }
 .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .job-name {
   flex: 1;
@@ -114,19 +149,19 @@ button, input, textarea { font: inherit; color: inherit; }
   background: transparent;
 }
 .job-name:hover { border-color: var(--line); }
-.job-name:focus { outline: none; border-color: var(--accent); background: #fff; }
+.job-name:focus { outline: none; border-color: var(--accent); background: var(--field); }
 .actions { display: flex; align-items: center; gap: 6px; }
 .actions .sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
 
 button {
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--btn);
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
   white-space: nowrap;
 }
-button:hover { background: #fff8eb; border-color: var(--orange); }
+button:hover { background: var(--btn-hover); border-color: var(--orange); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Primary action is construction orange with charcoal text (8.2:1). */
 button.primary { background: var(--orange); border-color: #e68a00; color: var(--charcoal); font-weight: 700; }
@@ -140,7 +175,10 @@ button.primary:hover { background: #ffad33; border-color: #e68a00; }
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto; /* very short windows: scroll rather than cut off the bottom */
 }
+.sidebar > * { flex-shrink: 0; }
 .nav-item {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   text-align: left;
@@ -161,6 +199,15 @@ button.primary:hover { background: #ffad33; border-color: #e68a00; }
 .nav-version:hover { background: transparent; color: #fff; text-decoration: underline; }
 .update-pill { background: var(--yellow); border-color: #e6b000; color: var(--charcoal); font-weight: 700; border-radius: 999px; padding: 5px 14px; flex-shrink: 0; }
 .update-pill:hover { background: #ffd65c; border-color: #e6b000; }
+.theme-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: transparent; border: 0; color: var(--nav-ink); font-size: 12px; padding: 6px 12px; text-align: left;
+}
+.theme-toggle:hover { background: var(--nav-active); border-color: transparent; }
+.theme-toggle .switch { position: relative; width: 30px; height: 16px; border-radius: 8px; background: #4a4e56; flex-shrink: 0; transition: background .15s; }
+.theme-toggle .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.theme-toggle[aria-checked="true"] .switch { background: var(--orange); }
+.theme-toggle[aria-checked="true"] .switch::after { transform: translateX(14px); background: var(--charcoal); }
 .nav-foot { padding: 8px 12px; font-size: 12px; color: #a9adb3; overflow-wrap: anywhere; }
 
 /* Content */
@@ -194,11 +241,12 @@ button.primary:hover { background: #ffad33; border-color: #e68a00; }
 .company-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
 .logo-box {
   height: 150px; border: 1px dashed var(--line-strong); border-radius: 10px; display: grid; place-items: center; padding: 14px;
-  background: #fff linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 0 0 / 16px 16px,
-              linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 8px 8px / 16px 16px;
+  /* White with a faint checkerboard (shows transparency), as the logo appears on the report. */
+  background: linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 0 0 / 16px 16px,
+              linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 8px 8px / 16px 16px #fff;
 }
 .logo-box img { max-width: 100%; max-height: 120px; object-fit: contain; }
-.logo-box span { color: var(--muted); }
+.logo-box span { color: #5b5f66; } /* the box is always white */
 .logo-actions { display: flex; gap: 8px; margin: 10px 0 6px; }
 button.primary-outline { border-color: var(--orange); color: var(--orange-text); font-weight: 700; }
 button:disabled { opacity: .45; cursor: default; }
@@ -207,7 +255,7 @@ button:disabled { opacity: .45; cursor: default; }
 /* Profit Forecast screen */
 .fc-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .fc-inputs label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-.fc-inputs input { font-size: 15px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; background: #fff; }
+.fc-inputs input { font-size: 15px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; background: var(--field); }
 .fc-inputs input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .fc-inputs input.invalid { border-color: var(--neg); background: var(--neg-soft); }
 .fc-basis { margin: 12px 0 0; line-height: 1.5; }
@@ -254,7 +302,7 @@ i.meter-billed { background: var(--yellow); }
 .breakdown tr.empty td { text-align: left; color: var(--muted); }
 .inline-pct { margin-left: 8px; color: var(--muted); }
 .inline-pct input {
-  width: 64px; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 5px; text-align: right; margin-right: 2px;
+  width: 64px; padding: 3px 6px; background: var(--field); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 5px; text-align: right; margin-right: 2px;
 }
 
 .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 16px; background: var(--line); }
@@ -269,7 +317,7 @@ i.meter-billed { background: var(--yellow); }
 .form label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .form input, .form textarea {
   font-size: 14px; color: var(--ink);
-  border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 9px; background: #fff; resize: vertical;
+  border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 9px; background: var(--field); resize: vertical;
 }
 .form input:focus, .form textarea:focus, .inline-pct input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
@@ -291,15 +339,15 @@ table.grid { width: 100%; min-width: 620px; border-collapse: collapse; table-lay
 .grid th.money, .grid td.money { text-align: right; }
 .grid th.num, .grid td.num { color: var(--muted); text-align: right; font-size: 12px; padding-right: 8px; }
 .grid tbody td { border-bottom: 1px solid var(--line); padding: 2px; }
-.grid tbody tr:hover { background: #fafafa; }
+.grid tbody tr:hover { background: var(--row-hover); }
 .grid input {
   width: 100%; text-overflow: ellipsis; border: 1px solid transparent; background: transparent; padding: 6px 6px; border-radius: 4px;
 }
 .grid input:hover { border-color: var(--line); }
 /* Example text only shows in the cell being edited, so it never looks like real data. */
 .grid input::placeholder { color: transparent; }
-.grid input:focus::placeholder { color: #8a8e94; }
-.grid input:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+.grid input:focus::placeholder { color: var(--placeholder); }
+.grid input:focus { outline: none; border-color: var(--accent); background: var(--field); box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid input.money { text-align: right; font-variant-numeric: tabular-nums; }
 .grid input.invalid, .grid input.invalid:focus { border-color: var(--neg); background: var(--neg-soft); box-shadow: none; }
 .grid tr.empty td { color: var(--muted); padding: 14px 8px; }
@@ -312,7 +360,7 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 /* Toast */
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
-  background: var(--charcoal); color: #fff; padding: 10px 14px; border-radius: 8px;
+  background: var(--toast-bg); color: #fff; padding: 10px 14px; border-radius: 8px;
   display: flex; gap: 14px; align-items: center; opacity: 0; pointer-events: none;
   max-width: min(720px, calc(100vw - 48px));
   transition: opacity .18s, transform .18s; box-shadow: 0 6px 24px rgba(0,0,0,.18);
@@ -322,6 +370,14 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 
 /* Printable report */
 .report { display: none; }
+
+/* Short windows (e.g. small laptop screens): tighten the sidebar so it all fits. */
+@media (max-height: 700px) {
+  .nav-item { padding: 6px 12px; gap: 0; }
+  .nav-settings { padding-top: 8px; }
+  .nav-foot { padding: 4px 12px; }
+  .theme-toggle { padding: 4px 12px; }
+}
 
 @media (max-width: 1250px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -372,7 +428,7 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 
 @media print {
   .app, .toast { display: none !important; }
-  html, body { background: #fff; height: auto; }
+  html, body { background: #fff; height: auto; color-scheme: light; }
   .report { display: block; color: #1f1f1f; font-size: 10.5px; line-height: 1.4; }
   .report * { box-sizing: border-box; }
   .report h1, .report h2, .report h3, .report p { margin: 0; }

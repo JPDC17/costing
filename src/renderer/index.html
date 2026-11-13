@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
   <title>Job Costing</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <div class="app">
@@ -33,6 +34,7 @@
       <button class="nav-item" data-tab="materials"><span>Materials &amp; Suppliers</span><span class="badge" id="nav-materials"></span></button>
       <button class="nav-item nav-settings" data-tab="company"><span>Company &amp; Logo</span><span class="badge" id="nav-company"></span></button>
       <div class="nav-foot" id="fileInfo"></div>
+      <button class="theme-toggle" id="themeToggle" role="switch" aria-checked="false" title="Switch between light and dark"><span>Dark mode</span><i class="switch" aria-hidden="true"></i></button>
       <button class="nav-version" id="versionBtn" title="Check for a newer version">Version <span id="appVersion">…</span> · Check for updates</button>
     </nav>
 

@@ -1,1 +1,1 @@
-Smaller and slightly quicker to start: the app no longer carries about 45 MB of unused library files. No changes to your jobs, reports or Excel files.
+Adds dark mode: use the switch at the bottom of the sidebar (or View > Dark Mode). Your choice is remembered, and PDF reports still print black on white. Also fixes the sidebar being cut off on short screens, and the logo preview background on the Company page.

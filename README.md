@@ -25,6 +25,8 @@ exports to Excel with working formulas and produces a printable PDF cost report.
 - **PDF report**: a traditional cost report with your company letterhead and logo.
 - **Company branding**: your company name, details and logo appear in the app, the PDF
   report and the Excel export.
+- **Dark mode**: switch at the bottom of the sidebar (or **View → Dark Mode**). The PDF
+  report always prints black on white.
 - **In-app updates**: the app finds, downloads, verifies and installs new versions itself.
 
 ![Profit forecast](docs/screenshot-forecast.png)

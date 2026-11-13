@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// The saved theme, passed by the main process so it's known before the page paints.
+const themeArg = process.argv.find(a => a.startsWith('--job-costing-theme='));
+
 contextBridge.exposeInMainWorld('api', {
+  initialTheme: themeArg && themeArg.endsWith('=dark') ? 'dark' : 'light',
+  saveTheme: theme => ipcRenderer.invoke('settings:saveTheme', theme),
   openJob: () => ipcRenderer.invoke('job:open'),
   saveJob: (job, filePath, saveAs) => ipcRenderer.invoke('job:save', { job, filePath, saveAs }),
   exportExcel: job => ipcRenderer.invoke('excel:export', job),

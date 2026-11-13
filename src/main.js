@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen, net } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const Updater = require('./updater');
@@ -14,7 +15,10 @@ const Company = require('./company');
 const JOB_FILTERS = [{ name: 'Job Costing File', extensions: ['jobcost'] }, { name: 'All Files', extensions: ['*'] }];
 const XLSX_FILTERS = [{ name: 'Excel Workbook', extensions: ['xlsx'] }];
 
-const APP_BACKGROUND = '#f4f4f3';
+// Window background shown before the page paints; matches --bg in styles.css.
+const BACKGROUNDS = { light: '#f4f4f3', dark: '#121417' };
+let theme = 'light'; // 'light' or 'dark', saved in settings.json
+const appBackground = () => BACKGROUNDS[theme];
 
 let win;
 let allowClose = false;
@@ -71,13 +75,15 @@ function createWindow() {
     minWidth: Math.min(900, area.width),
     minHeight: Math.min(560, area.height),
     title: 'Job Costing',
-    backgroundColor: APP_BACKGROUND,
+    backgroundColor: appBackground(),
     icon: path.join(__dirname, 'renderer', 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The saved theme, so the page can apply it before it first paints (no flash).
+      additionalArguments: [`--job-costing-theme=${theme}`],
     },
   });
   if (area.width < 1100 || area.height < 700) win.maximize();
@@ -138,7 +144,8 @@ function buildMenu() {
       submenu: [
         { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' },
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { role: 'togglefullscreen' }, { type: 'separator' },
+        { label: 'Dark Mode', type: 'checkbox', checked: theme === 'dark', click: () => send('toggleTheme') },
       ],
     },
   ];
@@ -189,26 +196,49 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const LOGO_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp' };
 const MAX_LOGO_FILE = 15 * 1024 * 1024;
 
+const normalizeTheme = t => (t === 'dark' ? 'dark' : 'light');
+
 async function readSettings() {
   try {
     const data = JSON.parse(await fs.readFile(settingsFile(), 'utf8'));
-    return { company: Company.normalizeCompany(data && data.company) };
+    return { company: Company.normalizeCompany(data && data.company), theme: normalizeTheme(data && data.theme) };
   } catch {
-    return { company: Company.emptyCompany() };
+    return { company: Company.emptyCompany(), theme: 'light' };
   }
+}
+
+// Settings are read, changed and written one at a time, so saving the company details
+// and switching the theme at the same moment can't overwrite each other.
+let settingsQueue = Promise.resolve();
+function updateSettings(change) {
+  const run = settingsQueue.then(async () => {
+    const next = change(await readSettings());
+    try {
+      await fs.mkdir(path.dirname(settingsFile()), { recursive: true });
+      await writeFileSafely(settingsFile(), JSON.stringify(next, null, 2));
+    } catch (err) {
+      throw friendly(err, 'saving');
+    }
+    return next;
+  });
+  settingsQueue = run.catch(() => {});
+  return run;
 }
 
 ipcMain.handle('settings:get', () => readSettings());
 
 ipcMain.handle('settings:saveCompany', async (_e, company) => {
   const clean = Company.normalizeCompany(company);
-  try {
-    await fs.mkdir(path.dirname(settingsFile()), { recursive: true });
-    await writeFileSafely(settingsFile(), JSON.stringify({ company: clean }, null, 2));
-  } catch (err) {
-    throw friendly(err, 'saving');
-  }
+  await updateSettings(s => ({ ...s, company: clean }));
   return clean;
+});
+
+ipcMain.handle('settings:saveTheme', async (_e, value) => {
+  theme = normalizeTheme(value);
+  if (win) win.setBackgroundColor(appBackground());
+  buildMenu(); // keeps View > Dark Mode ticked correctly
+  await updateSettings(s => ({ ...s, theme }));
+  return theme;
 });
 
 // Let the person pick an image; the window resizes it and turns it into a PNG.
@@ -265,7 +295,7 @@ ipcMain.handle('pdf:export', async (_e, jobName) => {
       preferCSSPageSize: true,
     });
   } finally {
-    win.setBackgroundColor(APP_BACKGROUND);
+    win.setBackgroundColor(appBackground());
   }
   try {
     await fs.writeFile(res.filePath, data);
@@ -428,6 +458,7 @@ async function e2eHooks() {
 }
 
 app.whenReady().then(() => {
+  try { theme = normalizeTheme(JSON.parse(fsSync.readFileSync(settingsFile(), 'utf8')).theme); } catch { /* first run */ }
   cleanOldUpdates();
   buildMenu();
   createWindow();
