@@ -37,9 +37,22 @@ test('validateManifest rejects bad or untrusted manifests', () => {
   assert.strictEqual(U.validateManifest(local, ['http://127.0.0.1:']).url, local.url);
 });
 
-test('the PowerShell swap script takes its paths as parameters and always restarts the app', () => {
+test('psQuote doubles every kind of single quote PowerShell recognises', () => {
+  assert.strictEqual(U.psQuote("C:\\Jobs\\O'Brien\u2019s"), "'C:\\Jobs\\O''Brien\u2019\u2019s'");
+  assert.strictEqual(U.psQuote('plain'), "'plain'");
+});
+
+test('swapCommand encodes the paths and the swap commands for -EncodedCommand', () => {
+  const enc = U.swapCommand("C:\\Users\\Pat O'Neil\\AppData\\Local\\Temp\\new.exe", 'D:\\Apps\\JobCosting-Portable.exe');
+  const text = Buffer.from(enc, 'base64').toString('utf16le');
+  assert.ok(text.startsWith("$New = 'C:\\Users\\Pat O''Neil\\AppData\\Local\\Temp\\new.exe'\n$Target = 'D:\\Apps\\JobCosting-Portable.exe'\n"));
+  assert.ok(text.endsWith(U.POWERSHELL_SWAP));
+  assert.ok(enc.length < 30000); // well inside the Windows command-line limit
+});
+
+test('the PowerShell swap commands always restart the app', () => {
   const s = U.POWERSHELL_SWAP;
-  assert.match(s, /^param\(\[string\]\$New, \[string\]\$Target\)/);
+  assert.ok(!/param\(/.test(s)); // paths are set in front of it, not passed as parameters
   assert.match(s, /\[System\.IO\.File\]::Replace\(\$staged, \$Target, \$backup\)/);
   assert.strictEqual((s.match(/Start-Process -FilePath/g) || []).length, 2); // new version starts either way
   assert.ok(!/Invoke-Expression|iex |DownloadString/i.test(s));

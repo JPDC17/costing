@@ -6,6 +6,12 @@ const crypto = require('crypto');
 const pkg = require('../package.json');
 
 const exe = path.join(__dirname, '..', 'dist', 'JobCosting-Portable.exe');
+// The exe must be built after the version was raised, or it would report the old version
+// and everyone would be offered the same update again on every start.
+if (fs.statSync(exe).mtimeMs < fs.statSync(path.join(__dirname, '..', 'package.json')).mtimeMs) {
+  console.error('dist/JobCosting-Portable.exe is older than package.json. Build first (npm run release).');
+  process.exit(1);
+}
 const data = fs.readFileSync(exe);
 const manifest = {
   version: pkg.version,

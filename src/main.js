@@ -299,6 +299,20 @@ ipcMain.on('app:set-title', (_e, title) => { if (win) win.setTitle(title); });
 const UPDATE_MANIFEST = process.env.JOB_COSTING_UPDATE_MANIFEST || (pkg.updates && pkg.updates.manifest);
 const EXTRA_TRUST = process.env.JOB_COSTING_UPDATE_MANIFEST ? ['http://127.0.0.1:'] : [];
 let pendingUpdate = null;
+let installing = false;
+
+// Remove update downloads left in the temp folder by earlier updates (over a day old).
+async function cleanOldUpdates() {
+  try {
+    const tmp = app.getPath('temp');
+    for (const name of await fs.readdir(tmp)) {
+      if (!name.startsWith('JobCosting-update-')) continue;
+      const dir = path.join(tmp, name);
+      const st = await fs.stat(dir);
+      if (st.isDirectory() && Date.now() - st.mtimeMs > 24 * 3600 * 1000) await fs.rm(dir, { recursive: true, force: true });
+    }
+  } catch { /* not important */ }
+}
 
 async function fetchManifest() {
   if (!UPDATE_MANIFEST) throw new Error('Updates are not set up for this copy of the app.');
@@ -325,6 +339,16 @@ ipcMain.handle('update:check', async () => {
 ipcMain.handle('update:install', async () => {
   const m = pendingUpdate;
   if (!m) throw new Error('No update is waiting. Check for updates first.');
+  if (installing) throw new Error('The update is already downloading.');
+  installing = true;
+  try {
+    return await installUpdate(m);
+  } finally {
+    installing = false;
+  }
+});
+
+async function installUpdate(m) {
   const portableExe = process.env.PORTABLE_EXECUTABLE_FILE;
   if (!portableExe) {
     // Not running as the portable exe (e.g. from source): just open the download.
@@ -343,16 +367,14 @@ ipcMain.handle('update:install', async () => {
     if (win && Date.now() - lastSent > 150) { lastSent = Date.now(); win.webContents.send('update:progress', { received, total: m.size }); }
   }
   if (received !== m.size) throw new Error('The download was incomplete. Please try again.');
-  if (hash.digest('hex') !== m.sha256) throw new Error('The download did not match its checksum, so it was not used. Please try again.');
+  if (hash.digest('hex') !== m.sha256) throw new Error('The download did not match its checksum, so it was not used. If an update was published in the last few minutes, GitHub may still be updating its copy; please try again shortly.');
   if (win) win.webContents.send('update:progress', { received, total: m.size });
 
   const dir = await fs.mkdtemp(path.join(app.getPath('temp'), 'JobCosting-update-'));
   const newExe = path.join(dir, `JobCosting-Portable-${m.version}.exe`);
   await fs.writeFile(newExe, Buffer.concat(chunks));
-  const script = path.join(dir, 'swap.ps1');
-  await fs.writeFile(script, Updater.POWERSHELL_SWAP, 'utf8');
   try {
-    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script, '-New', newExe, '-Target', portableExe], { detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Updater.swapCommand(newExe, portableExe)], { detached: true, stdio: 'ignore', windowsHide: true });
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     child.unref();
   } catch {
@@ -363,9 +385,10 @@ ipcMain.handle('update:install', async () => {
   allowClose = true;
   setTimeout(() => app.quit(), 400);
   return { restarting: true, version: m.version };
-});
+}
 
 app.whenReady().then(() => {
+  cleanOldUpdates();
   buildMenu();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) { allowClose = false; createWindow(); } });

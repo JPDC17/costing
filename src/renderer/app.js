@@ -864,6 +864,7 @@ async function save(saveAs) {
 // ---------- Updates ----------
 
 let updateInfo = null;
+let updating = false;
 
 async function checkUpdates(silent) {
   try {
@@ -881,6 +882,7 @@ async function checkUpdates(silent) {
 }
 
 async function offerUpdate() {
+  if (updating) return toast('The update is already downloading.');
   if (!updateInfo) return checkUpdates(false);
   const mb = Math.round(updateInfo.size / 1048576);
   const ok = window.confirm(`Version ${updateInfo.latest} is available (you have ${updateInfo.current}).`
@@ -888,6 +890,7 @@ async function offerUpdate() {
     + `\n\nDownload it (${mb} MB) and restart Job Costing now?`);
   if (!ok) return;
   if (!(await confirmIfDirty())) return;
+  updating = true;
   try {
     toast('Downloading the update…');
     const r = await window.api.installUpdate();
@@ -901,6 +904,8 @@ async function offerUpdate() {
     }
   } catch (err) {
     toast(`The update did not install: ${errMsg(err)}`);
+  } finally {
+    updating = false;
   }
 }
 

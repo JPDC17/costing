@@ -41,13 +41,12 @@ function validateManifest(m, extraPrefixes = []) {
   return { version, url, size, sha256, notes, date: typeof m.date === 'string' ? m.date.slice(0, 40) : '' };
 }
 
-// The PowerShell script that swaps the exe once the app has closed. It takes the paths
-// as parameters (no quoting problems), copies the new exe next to the old one, then
-// retries an atomic replace until the old exe is no longer in use (up to 2 minutes).
-// If the replace can't be done (e.g. a read-only folder) it starts the new version
-// from where it was downloaded instead, so the person still gets the update.
-const POWERSHELL_SWAP = String.raw`param([string]$New, [string]$Target)
-$ErrorActionPreference = 'Stop'
+// The PowerShell commands that swap the exe once the app has closed. They copy the new
+// exe next to the old one, then retry an atomic replace until the old exe is no longer
+// in use (up to 2 minutes). If the replace can't be done (e.g. a read-only folder) they
+// start the new version from where it was downloaded instead, so the person still gets
+// the update. $New and $Target are set in front of this by swapCommand().
+const POWERSHELL_SWAP = String.raw`$ErrorActionPreference = 'Stop'
 $log = Join-Path $env:TEMP 'JobCosting-update.log'
 function Write-Log([string]$m) { Add-Content -LiteralPath $log -Value ((Get-Date -Format s) + '  ' + $m) }
 Write-Log ('Updating ' + $Target)
@@ -79,4 +78,18 @@ if ($done) {
 }
 `;
 
-module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP };
+// A PowerShell single-quoted string. PowerShell also treats curly quotes as quotes, so
+// every kind is doubled (e.g. a folder called O’Brien's Jobs stays intact).
+function psQuote(s) {
+  return `'${String(s).replace(/['\u2018\u2019\u201a\u201b]/g, q => q + q)}'`;
+}
+
+// The full command, base64-encoded for powershell -EncodedCommand. Commands passed this
+// way aren't blocked by the "running scripts is disabled" policy that applies to .ps1
+// files on many company PCs.
+function swapCommand(newExe, target) {
+  const text = `$New = ${psQuote(newExe)}\n$Target = ${psQuote(target)}\n${POWERSHELL_SWAP}`;
+  return Buffer.from(text, 'utf16le').toString('base64');
+}
+
+module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, psQuote, swapCommand };
