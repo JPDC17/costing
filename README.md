@@ -120,6 +120,32 @@ npm run dist:win
 
 The new exe goes to `dist/JobCosting-Portable.exe`. The icon is `build/icon.ico`.
 
+## Updates
+
+From version 1.1.0 the app can update itself:
+
+- A few seconds after it starts, the app quietly checks for a newer version. If there is
+  one, an **Update to x.y.z** button appears in the top bar.
+- You can also click **Version … · Check for updates** at the bottom of the sidebar, or
+  **Help → Check for Updates…**.
+- Updating offers to save your job, downloads the new exe, checks its size and SHA-256
+  checksum, then closes the app. A small PowerShell script swaps the new exe in place of
+  the old one and opens it again. If the swap can't be done (for example, the exe is in a
+  read-only folder), the new version is opened from where it was downloaded instead.
+
+**Publishing an update** (for whoever builds the app):
+
+1. Raise `"version"` in `package.json` (e.g. 1.1.0 → 1.2.0).
+2. Run `npm run release`. This builds `dist/JobCosting-Portable.exe` and writes `latest.json`
+   (version, download address, size and checksum). Add notes with
+   `node scripts/write-manifest.js "What changed"`.
+3. Commit and push both files. Everyone's app will offer the update.
+
+The app reads `latest.json` and the exe from the addresses under `"updates"` in
+`package.json` (currently this repository's `claude/tender-tesla-clm33c` branch). If the
+files move, for example to `main`, update those addresses and publish a new version; copies
+already installed keep checking the old address until they've updated once.
+
 ## Running from source
 
 ```bash
@@ -152,8 +178,9 @@ headings repeat on each page, and the footer shows the company, job and page num
 
 ## Look and feel
 
-- Colours: purple #845EC2, dark #4B4453, lavender #B0A8B9, rust #C34A36 and
-  coral #FF8066 (set once at the top of `src/renderer/styles.css`).
+- Colours: charcoal #17191D, construction orange #FF9900, safety yellow #FFC928,
+  white and steel grey #85898F (set once at the top of `src/renderer/styles.css`).
+  Losses are shown in red.
 - Font: Roboto Condensed, bundled in `src/renderer/fonts/` (Apache License 2.0), so
   the app and its PDF reports look the same on every computer.
 - Icon: `build/icon.ico` (the exe) and `src/renderer/logo.png` (top bar and window).

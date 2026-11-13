@@ -861,6 +861,49 @@ async function save(saveAs) {
   }
 }
 
+// ---------- Updates ----------
+
+let updateInfo = null;
+
+async function checkUpdates(silent) {
+  try {
+    const r = await window.api.checkUpdate();
+    updateInfo = r.available ? r : null;
+    $('#updateBtn').hidden = !r.available;
+    if (r.available) $('#updateBtn').textContent = `Update to ${r.latest}`;
+    if (!silent) {
+      if (r.available) await offerUpdate();
+      else toast(`You have the latest version (${r.current}).`);
+    }
+  } catch (err) {
+    if (!silent) toast(`Could not check for updates: ${errMsg(err)}`);
+  }
+}
+
+async function offerUpdate() {
+  if (!updateInfo) return checkUpdates(false);
+  const mb = Math.round(updateInfo.size / 1048576);
+  const ok = window.confirm(`Version ${updateInfo.latest} is available (you have ${updateInfo.current}).`
+    + `${updateInfo.notes ? `\n\n${updateInfo.notes}` : ''}`
+    + `\n\nDownload it (${mb} MB) and restart Job Costing now?`);
+  if (!ok) return;
+  if (!(await confirmIfDirty())) return;
+  try {
+    toast('Downloading the update…');
+    const r = await window.api.installUpdate();
+    if (r.restarting) {
+      state.dirty = false;
+      toast(`Installing version ${r.version}. Job Costing will reopen in a moment.`);
+    } else if (r.file) {
+      toast('The update was downloaded but could not be installed automatically. Its folder has been opened. Run the new file from there.');
+    } else {
+      toast('The download has been opened in your browser.');
+    }
+  } catch (err) {
+    toast(`The update did not install: ${errMsg(err)}`);
+  }
+}
+
 const commands = {
   async new() {
     if (!(await confirmIfDirty())) return;
@@ -894,6 +937,7 @@ const commands = {
       if (res) toast(`Exported to Excel${invalidAmountNote()}`, { label: 'Show file', run: () => window.api.reveal(res.filePath) });
     } catch (err) { toast(`Could not export: ${errMsg(err)}`); }
   },
+  checkUpdates() { return checkUpdates(false); },
   async exportPdf() {
     buildReport();
     try {
@@ -959,6 +1003,14 @@ function init() {
   window.api.getSettings().then(s => { state.company = s.company; renderCompany(); }).catch(() => renderCompany());
 
   window.api.onMenu(run);
+  window.api.appVersion().then(v => { $('#appVersion').textContent = v; }).catch(() => {});
+  window.api.onUpdateProgress(p => {
+    const pct = p.total ? Math.min(100, Math.floor(p.received / p.total * 100)) : 0;
+    toast(`Downloading the update… ${pct}%`);
+  });
+  $('#updateBtn').addEventListener('click', offerUpdate);
+  $('#versionBtn').addEventListener('click', () => checkUpdates(false));
+  setTimeout(() => checkUpdates(true), 4000); // quiet check shortly after starting
   window.api.onRequestClose(async () => {
     if (await confirmIfDirty()) window.api.closeConfirmed();
   });

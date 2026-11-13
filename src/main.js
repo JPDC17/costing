@@ -1,6 +1,10 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen, net } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
+const Updater = require('./updater');
+const pkg = require('../package.json');
 const { exportWorkbook, importWorkbook } = require('./excel');
 const Calc = require('./calc');
 const Company = require('./company');
@@ -8,7 +12,7 @@ const Company = require('./company');
 const JOB_FILTERS = [{ name: 'Job Costing File', extensions: ['jobcost'] }, { name: 'All Files', extensions: ['*'] }];
 const XLSX_FILTERS = [{ name: 'Excel Workbook', extensions: ['xlsx'] }];
 
-const APP_BACKGROUND = '#f6f4f8';
+const APP_BACKGROUND = '#f4f4f3';
 
 let win;
 let allowClose = false;
@@ -120,6 +124,13 @@ function buildMenu() {
       ],
     },
     { role: 'editMenu' },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Check for Updates…', click: () => send('checkUpdates') },
+        { label: `Version ${app.getVersion()}`, enabled: false },
+      ],
+    },
     {
       label: 'View',
       submenu: [
@@ -282,6 +293,77 @@ ipcMain.on('app:close-confirmed', () => {
 });
 
 ipcMain.on('app:set-title', (_e, title) => { if (win) win.setTitle(title); });
+
+// ---------- Updates ----------
+// For testing, JOB_COSTING_UPDATE_MANIFEST can point at a local test server.
+const UPDATE_MANIFEST = process.env.JOB_COSTING_UPDATE_MANIFEST || (pkg.updates && pkg.updates.manifest);
+const EXTRA_TRUST = process.env.JOB_COSTING_UPDATE_MANIFEST ? ['http://127.0.0.1:'] : [];
+let pendingUpdate = null;
+
+async function fetchManifest() {
+  if (!UPDATE_MANIFEST) throw new Error('Updates are not set up for this copy of the app.');
+  const res = await net.fetch(`${UPDATE_MANIFEST}?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error(`The update server answered ${res.status}.`);
+  return Updater.validateManifest(await res.json(), EXTRA_TRUST);
+}
+
+ipcMain.handle('update:version', () => app.getVersion());
+
+ipcMain.handle('update:check', async () => {
+  try {
+    const m = await fetchManifest();
+    const available = Updater.compareVersions(m.version, app.getVersion()) > 0;
+    pendingUpdate = available ? m : null;
+    return { current: app.getVersion(), latest: m.version, available, notes: m.notes, size: m.size };
+  } catch (err) {
+    const offline = /fetch|network|net::|ERR_|ENOTFOUND|ECONN|abort|timed? ?out/i.test(String(err && (err.message || err)));
+    throw new Error(offline ? 'Could not reach the update server. Check your internet connection and try again.' : err.message);
+  }
+});
+
+// Download the new exe, check it, then swap it in and restart (portable exe only).
+ipcMain.handle('update:install', async () => {
+  const m = pendingUpdate;
+  if (!m) throw new Error('No update is waiting. Check for updates first.');
+  const portableExe = process.env.PORTABLE_EXECUTABLE_FILE;
+  if (!portableExe) {
+    // Not running as the portable exe (e.g. from source): just open the download.
+    await shell.openExternal(m.url);
+    return { manual: true };
+  }
+  const res = await net.fetch(m.url, { cache: 'no-store' });
+  if (!res.ok || !res.body) throw new Error(`The download failed (${res.status}).`);
+  const hash = crypto.createHash('sha256');
+  const chunks = [];
+  let received = 0, lastSent = 0;
+  for await (const chunk of res.body) {
+    const buf = Buffer.from(chunk);
+    chunks.push(buf); hash.update(buf); received += buf.length;
+    if (received > m.size) throw new Error('The download is larger than expected, so it was not used.');
+    if (win && Date.now() - lastSent > 150) { lastSent = Date.now(); win.webContents.send('update:progress', { received, total: m.size }); }
+  }
+  if (received !== m.size) throw new Error('The download was incomplete. Please try again.');
+  if (hash.digest('hex') !== m.sha256) throw new Error('The download did not match its checksum, so it was not used. Please try again.');
+  if (win) win.webContents.send('update:progress', { received, total: m.size });
+
+  const dir = await fs.mkdtemp(path.join(app.getPath('temp'), 'JobCosting-update-'));
+  const newExe = path.join(dir, `JobCosting-Portable-${m.version}.exe`);
+  await fs.writeFile(newExe, Buffer.concat(chunks));
+  const script = path.join(dir, 'swap.ps1');
+  await fs.writeFile(script, Updater.POWERSHELL_SWAP, 'utf8');
+  try {
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script, '-New', newExe, '-Target', portableExe], { detached: true, stdio: 'ignore', windowsHide: true });
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+    child.unref();
+  } catch {
+    // Couldn't start the helper: leave the new version where it is and show it.
+    shell.showItemInFolder(newExe);
+    return { manual: true, file: newExe };
+  }
+  allowClose = true;
+  setTimeout(() => app.quit(), 400);
+  return { restarting: true, version: m.version };
+});
 
 app.whenReady().then(() => {
   buildMenu();

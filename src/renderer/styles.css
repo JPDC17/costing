@@ -38,33 +38,34 @@
 }
 
 :root {
-  /* Palette: purple #845EC2, dark #4B4453, lavender #B0A8B9, rust #C34A36, coral #FF8066.
-     Lavender and coral are too light for text on white, so they're used for fills,
-     borders and bars; text uses the dark, purple and rust shades. */
-  --purple: #845ec2;
-  --dark: #4b4453;
-  --lavender: #b0a8b9;
-  --rust: #c34a36;
-  --coral: #ff8066;
-  --bg: #f6f4f8;
+  /* Palette: charcoal #17191D, construction orange #FF9900, safety yellow #FFC928,
+     white #FFFFFF, steel grey #85898F. Orange, yellow and steel grey are too light for
+     text on white, so they're used as fills, bars and borders (with charcoal text on
+     them); text uses charcoal, a darker steel grey and a darker orange. Losses stay red. */
+  --charcoal: #17191d;
+  --orange: #ff9900;
+  --yellow: #ffc928;
+  --steel: #85898f;
+  --orange-text: #995c00;   /* orange that's readable as text on white (5.4:1) */
+  --bg: #f4f4f3;
   --panel: #ffffff;
-  --ink: #3a3441;
-  --muted: #6e6577;
-  --line: #e7e3ec;
-  --line-strong: #cdc6d4;
-  --accent: var(--purple);
-  --accent-ink: #ffffff;
-  --accent-soft: #ece5f7;
-  --nav: var(--dark);
-  --nav-ink: #d8d2de;
-  --nav-active: #5d5566;
-  --pos: var(--purple);
-  --neg: var(--rust);
-  --neg-soft: #f8e4e0;
-  --s1: var(--purple);
-  --s2: var(--coral);
-  --s3: var(--dark);
-  --s4: var(--lavender);
+  --ink: var(--charcoal);
+  --muted: #5b5f66;         /* darker steel grey for secondary text (6.4:1) */
+  --line: #e4e5e7;
+  --line-strong: #c9ccd0;
+  --accent: var(--orange);
+  --accent-ink: var(--charcoal);
+  --accent-soft: #ffeccc;
+  --nav: var(--charcoal);
+  --nav-ink: #c8ccd2;
+  --nav-active: #2a2d33;
+  --pos: var(--orange-text);
+  --neg: #b3261e;
+  --neg-soft: #fbe5e2;
+  --s1: var(--orange);
+  --s2: var(--yellow);
+  --s3: var(--charcoal);
+  --s4: var(--steel);
   font-family: "Roboto Condensed", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   color: var(--ink);
@@ -96,7 +97,7 @@ button, input, textarea { font: inherit; color: inherit; }
   flex-shrink: 0;
   font-weight: 700;
   letter-spacing: .02em;
-  color: var(--purple);
+  color: var(--charcoal);
   display: flex; align-items: center; gap: 8px;
 }
 .brand img { width: 30px; height: 30px; display: block; flex-shrink: 0; }
@@ -125,11 +126,11 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
-button:hover { background: #f6f2fb; border-color: var(--lavender); }
+button:hover { background: #fff8eb; border-color: var(--orange); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* Primary action is coral like the logo's = key, with dark text for contrast. */
-button.primary { background: var(--coral); border-color: #f2694d; color: #2e2934; font-weight: 700; }
-button.primary:hover { background: #ff9580; border-color: #f2694d; }
+/* Primary action is construction orange with charcoal text (8.2:1). */
+button.primary { background: var(--orange); border-color: #e68a00; color: var(--charcoal); font-weight: 700; }
+button.primary:hover { background: #ffad33; border-color: #e68a00; }
 
 /* Sidebar */
 .sidebar {
@@ -150,13 +151,17 @@ button.primary:hover { background: #ff9580; border-color: #f2694d; }
   border-radius: 6px;
 }
 .nav-item:hover { background: var(--nav-active); }
-.nav-item.active { background: var(--nav-active); color: #fff; box-shadow: inset 3px 0 0 var(--coral); }
-.badge { font-size: 12px; color: #cfc9d6; font-variant-numeric: tabular-nums; }
+.nav-item.active { background: var(--nav-active); color: #fff; box-shadow: inset 3px 0 0 var(--yellow); }
+.badge { font-size: 12px; color: #a9adb3; font-variant-numeric: tabular-nums; }
 .badge:empty { display: none; }
-.nav-item.active .badge { color: #f1eef4; }
+.nav-item.active .badge { color: #e6e8eb; }
 .badge.neg { color: #ffb3a3 !important; }
-.nav-settings { margin-top: auto; border-top: 1px solid #5d5566; border-radius: 0 0 6px 6px; padding-top: 12px; }
-.nav-foot { padding: 8px 12px; font-size: 12px; color: #cfc9d6; overflow-wrap: anywhere; }
+.nav-settings { margin-top: auto; border-top: 1px solid #33363c; border-radius: 0 0 6px 6px; padding-top: 12px; }
+.nav-version { background: transparent; border: 0; color: #a9adb3; font-size: 11.5px; text-align: left; padding: 2px 12px 6px; }
+.nav-version:hover { background: transparent; color: #fff; text-decoration: underline; }
+.update-pill { background: var(--yellow); border-color: #e6b000; color: var(--charcoal); font-weight: 700; border-radius: 999px; padding: 5px 14px; flex-shrink: 0; }
+.update-pill:hover { background: #ffd65c; border-color: #e6b000; }
+.nav-foot { padding: 8px 12px; font-size: 12px; color: #a9adb3; overflow-wrap: anywhere; }
 
 /* Content */
 .content { overflow: auto; padding: 20px 24px 40px; }
@@ -189,13 +194,13 @@ button.primary:hover { background: #ff9580; border-color: #f2694d; }
 .company-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
 .logo-box {
   height: 150px; border: 1px dashed var(--line-strong); border-radius: 10px; display: grid; place-items: center; padding: 14px;
-  background: #fff linear-gradient(45deg, #f4f1f7 25%, transparent 25%, transparent 75%, #f4f1f7 75%) 0 0 / 16px 16px,
-              linear-gradient(45deg, #f4f1f7 25%, transparent 25%, transparent 75%, #f4f1f7 75%) 8px 8px / 16px 16px;
+  background: #fff linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 0 0 / 16px 16px,
+              linear-gradient(45deg, #f1f2f3 25%, transparent 25%, transparent 75%, #f1f2f3 75%) 8px 8px / 16px 16px;
 }
 .logo-box img { max-width: 100%; max-height: 120px; object-fit: contain; }
 .logo-box span { color: var(--muted); }
 .logo-actions { display: flex; gap: 8px; margin: 10px 0 6px; }
-button.primary-outline { border-color: var(--purple); color: var(--purple); font-weight: 700; }
+button.primary-outline { border-color: var(--orange); color: var(--orange-text); font-weight: 700; }
 button:disabled { opacity: .45; cursor: default; }
 .form-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
@@ -219,9 +224,9 @@ button:disabled { opacity: .45; cursor: default; }
 .kpi-note { text-transform: none; letter-spacing: 0; }
 .stat.pos { color: var(--pos); }
 .meter { display: flex; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 16px 0 6px; }
-.meter-fill { height: 100%; width: 0; background: var(--lavender); transition: width .2s; }
-.meter-fill.meter-paid, i.meter-paid { background: var(--purple); }
-i.meter-billed { background: var(--lavender); }
+.meter-fill { height: 100%; width: 0; background: var(--yellow); transition: width .2s; }
+.meter-fill.meter-paid, i.meter-paid { background: var(--orange); }
+i.meter-billed { background: var(--yellow); }
 .meter-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .meter-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .breakdown tr.sub th { padding-left: 16px; font-weight: 400; }
@@ -276,7 +281,7 @@ table.grid { width: 100%; min-width: 620px; border-collapse: collapse; table-lay
 .grid col.c-act { width: 40px; }
 .grid col.c-check { width: 56px; }
 .grid th.check, .grid td.check { text-align: center; }
-.grid td.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--pos); cursor: pointer; vertical-align: middle; }
+.grid td.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--orange); cursor: pointer; vertical-align: middle; }
 .grid td.paid-count { font-weight: 600; color: var(--muted); font-size: 12px; }
 .grid tr.is-paid td.money input { color: var(--pos); }
 .grid th {
@@ -286,14 +291,14 @@ table.grid { width: 100%; min-width: 620px; border-collapse: collapse; table-lay
 .grid th.money, .grid td.money { text-align: right; }
 .grid th.num, .grid td.num { color: var(--muted); text-align: right; font-size: 12px; padding-right: 8px; }
 .grid tbody td { border-bottom: 1px solid var(--line); padding: 2px; }
-.grid tbody tr:hover { background: #faf8fc; }
+.grid tbody tr:hover { background: #fafafa; }
 .grid input {
   width: 100%; text-overflow: ellipsis; border: 1px solid transparent; background: transparent; padding: 6px 6px; border-radius: 4px;
 }
 .grid input:hover { border-color: var(--line); }
 /* Example text only shows in the cell being edited, so it never looks like real data. */
 .grid input::placeholder { color: transparent; }
-.grid input:focus::placeholder { color: #9a92a3; }
+.grid input:focus::placeholder { color: #8a8e94; }
 .grid input:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid input.money { text-align: right; font-variant-numeric: tabular-nums; }
 .grid input.invalid, .grid input.invalid:focus { border-color: var(--neg); background: var(--neg-soft); box-shadow: none; }
@@ -307,13 +312,13 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 /* Toast */
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
-  background: #2e2934; color: #fff; padding: 10px 14px; border-radius: 8px;
+  background: var(--charcoal); color: #fff; padding: 10px 14px; border-radius: 8px;
   display: flex; gap: 14px; align-items: center; opacity: 0; pointer-events: none;
   max-width: min(720px, calc(100vw - 48px));
   transition: opacity .18s, transform .18s; box-shadow: 0 6px 24px rgba(0,0,0,.18);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-.toast button { background: transparent; color: var(--coral); border-color: #ff806666; padding: 3px 10px; }
+.toast button { background: transparent; color: var(--yellow); border-color: #ffc92866; padding: 3px 10px; }
 
 /* Printable report */
 .report { display: none; }
@@ -411,7 +416,7 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
   .report tr.sub td { border-top: 1px solid #999; font-weight: 700; }
   .report tr.grand td { font-weight: 700; border-top: 1px solid #1f1f1f; border-bottom: 3px double #1f1f1f; padding-top: 4px; padding-bottom: 3px; }
   .report tr.strong td { font-weight: 700; }
-  .report tr.neg td.num, .report tr.grand.neg td.num { color: #a8341f; }
+  .report tr.neg td.num, .report tr.grand.neg td.num { color: #b3261e; }
 
   /* Detail tables */
   .rp-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
