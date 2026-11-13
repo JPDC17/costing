@@ -1,1 +1,1 @@
-Updates now come from GitHub Releases, built and tested on Windows by GitHub. Includes the excavator logo, the charcoal and orange colours, and more reliable in-app updates.
+Fixes in-app updates: the app now restarts into the new version after downloading it. (Updating from 1.1.x or 1.2.0 needs one manual download; after that, the update button works.)

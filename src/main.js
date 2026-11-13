@@ -384,9 +384,17 @@ async function installUpdate(m) {
     // (if the app was started from a PowerShell 7 window) can stop it loading its commands.
     const env = { ...process.env };
     delete env.PSModulePath;
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Updater.swapCommand(newExe, portableExe)], { detached: true, stdio: 'ignore', windowsHide: true, env });
-    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-    child.unref();
+    // A PowerShell started as a detached, console-less process can exit at once (it
+    // did on Windows 10/11 in testing). So start a short-lived PowerShell normally and
+    // wait for it: it launches the swap as its own hidden process (which carries on
+    // after the app closes) and exits with 0 once that has started.
+    const launcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Updater.launchCommand(newExe, portableExe)], { stdio: 'ignore', windowsHide: true, env });
+    const code = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { launcher.kill(); reject(new Error('timed out')); }, 30000);
+      launcher.once('error', err => { clearTimeout(timer); reject(err); });
+      launcher.once('exit', c => { clearTimeout(timer); resolve(c); });
+    });
+    if (code !== 0) throw new Error(`launcher exited with ${code}`);
   } catch {
     // Couldn't start the helper: leave the new version where it is and show it.
     shell.showItemInFolder(newExe);

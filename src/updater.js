@@ -93,4 +93,16 @@ function swapCommand(newExe, target) {
   return Buffer.from(text, 'utf16le').toString('base64');
 }
 
-module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, psQuote, swapCommand };
+// Starts the swap as its own hidden PowerShell process and exits 0 once it's running.
+// Start-Process gives the swap a normal (hidden) console, and it isn't tied to the app,
+// so it keeps going after the app closes.
+function launchCommand(newExe, target) {
+  const text = [
+    "$ErrorActionPreference = 'Stop'",
+    `$p = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${swapCommand(newExe, target)}'`,
+    'if ($p -and $p.Id) { exit 0 } else { exit 1 }',
+  ].join('\n');
+  return Buffer.from(text, 'utf16le').toString('base64');
+}
+
+module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, psQuote, swapCommand, launchCommand };

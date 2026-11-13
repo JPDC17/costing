@@ -50,6 +50,14 @@ test('swapCommand encodes the paths and the swap commands for -EncodedCommand', 
   assert.ok(enc.length < 30000); // well inside the Windows command-line limit
 });
 
+test('launchCommand starts the swap as its own hidden process', () => {
+  const text = Buffer.from(U.launchCommand('C:\\T\\new.exe', 'D:\\A\\app.exe'), 'base64').toString('utf16le');
+  assert.match(text, /Start-Process -FilePath 'powershell\.exe' -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','[A-Za-z0-9+\/=]+'/);
+  const inner = text.match(/'-EncodedCommand','([A-Za-z0-9+\/=]+)'/)[1];
+  assert.strictEqual(inner, U.swapCommand('C:\\T\\new.exe', 'D:\\A\\app.exe')); // base64 has no quotes, so it's safe inside '...'
+  assert.ok(U.launchCommand('C:\\T\\new.exe', 'D:\\A\\app.exe').length < 30000);
+});
+
 test('the PowerShell swap commands always restart the app', () => {
   const s = U.POWERSHELL_SWAP;
   assert.ok(!/param\(/.test(s)); // paths are set in front of it, not passed as parameters
