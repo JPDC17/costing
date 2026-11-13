@@ -1,19 +1,23 @@
 # Builds and publishes Job Costing on GitHub's Windows machines.
 #
-# - Every push to the branch: run the tests and the Windows update-swap test.
-# - Pushing a version tag (e.g. v1.2.0): the same, then build the portable exe and publish
-#   it as a GitHub Release together with latest.json, which the app's update button reads.
-#   The tag's message becomes the release notes shown in the app.
+# On every push: run the tests and a real-Windows test of the in-app update swap.
+# If package.json has a version that hasn't been released yet (e.g. you raised it from
+# 1.2.0 to 1.3.0), also build the portable exe and publish it as a GitHub Release, tagged
+# v<version>, with latest.json (which the app's update button reads). The release notes,
+# also shown in the app's update prompt, come from RELEASE_NOTES.md.
 name: Release
 
 on:
   push:
     branches: [claude/tender-tesla-clm33c, main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to create the release
+  contents: write   # needed to create the release and its tag
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   windows:
@@ -35,32 +39,37 @@ jobs:
       - name: Update swap test (real Windows PowerShell)
         run: node scripts/test-swap-windows.js
 
-      - name: Check the tag matches package.json
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1
-          fi
-
-      - name: Build the portable exe
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: npx electron-builder --win portable --x64 --publish never
-
-      - name: Write latest.json
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN/,$d' > notes.txt
-          node scripts/write-manifest.js "$(cat notes.txt)"
-
-      - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Is this version new?
+        id: version
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/JobCosting-Portable.exe latest.json \
-            --title "Job Costing $GITHUB_REF_NAME" --notes-file notes.txt --latest
+          version=$(node -p "require('./package.json').version")
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new; it will be built and published."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the portable exe
+        if: steps.version.outputs.publish == 'true'
+        run: npx electron-builder --win portable --x64 --publish never
+
+      - name: Write latest.json
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        run: node scripts/write-manifest.js "$(cat RELEASE_NOTES.md 2>/dev/null)"
+
+      - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" dist/JobCosting-Portable.exe latest.json \
+            --target "$GITHUB_SHA" --title "Job Costing ${{ steps.version.outputs.tag }}" \
+            --notes-file RELEASE_NOTES.md --latest

@@ -137,18 +137,16 @@ From version 1.1.0 the app can update itself:
 
 **Publishing an update** (GitHub builds and publishes it for you):
 
-1. Raise `"version"` in `package.json` (e.g. 1.2.0 → 1.3.0), commit and push.
-2. Tag that commit with the same version and a short note of what changed, then push the tag:
+1. Raise `"version"` in `package.json` (e.g. 1.2.0 → 1.3.0).
+2. Replace the text in `RELEASE_NOTES.md` with a short note of what changed (it's shown in
+   the app's update prompt).
+3. Commit and push.
 
-   ```bash
-   git tag -a v1.3.0 -m "What changed in this version"
-   git push origin v1.3.0
-   ```
-
-3. The **Release** workflow (`.github/workflows/release.yml`) runs on a Windows machine:
-   it runs the tests, tests the update swap in real Windows PowerShell, builds the exe and
-   publishes a GitHub Release containing `JobCosting-Portable.exe` and `latest.json`. The
-   tag's note is shown in the app's update prompt. Everyone's app then offers the update.
+The **Release** workflow (`.github/workflows/release.yml`) runs on a Windows machine: it
+runs the tests and tests the update swap in real Windows PowerShell. Because the version is
+new, it then builds the exe and publishes a GitHub Release (tagged `v1.3.0`) containing
+`JobCosting-Portable.exe` and `latest.json`. Everyone's app then offers the update. Pushes
+that don't change the version only run the tests.
 
 The app checks `https://github.com/JPDC17/costing/releases/latest/download/latest.json`
 (set under `"updates"` in `package.json`). Exes are no longer committed to the repository,
