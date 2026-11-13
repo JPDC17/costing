@@ -323,11 +323,17 @@ async function fetchManifest() {
 
 ipcMain.handle('update:version', () => app.getVersion());
 
+async function checkForUpdate() {
+  const m = await fetchManifest();
+  const available = Updater.compareVersions(m.version, app.getVersion()) > 0;
+  pendingUpdate = available ? m : null;
+  return { m, available };
+}
+
 ipcMain.handle('update:check', async () => {
   try {
-    const m = await fetchManifest();
-    const available = Updater.compareVersions(m.version, app.getVersion()) > 0;
-    pendingUpdate = available ? m : null;
+    const { m } = await checkForUpdate();
+    const available = !!pendingUpdate;
     return { current: app.getVersion(), latest: m.version, available, notes: m.notes, size: m.size };
   } catch (err) {
     const offline = /fetch|network|net::|ERR_|ENOTFOUND|ECONN|abort|timed? ?out/i.test(String(err && (err.message || err)));
@@ -391,10 +397,27 @@ async function installUpdate(m) {
   return { restarting: true, version: m.version };
 }
 
+// Test switches for the end-to-end update test on Windows (see scripts/e2e-update-windows.ps1).
+// They do nothing unless these environment variables are set.
+async function e2eHooks() {
+  const marker = process.env.JOB_COSTING_E2E_MARKER;
+  const note = async text => { if (marker) await fs.appendFile(marker, `${new Date().toISOString()} ${app.getVersion()} ${text}\n`).catch(() => {}); };
+  await note(`started (exe ${process.env.PORTABLE_EXECUTABLE_FILE || '-'})`);
+  if (process.env.JOB_COSTING_E2E_AUTOUPDATE !== '1') return;
+  try {
+    const { m, available } = await checkForUpdate();
+    await note(`checked: latest ${m.version}, update ${available ? 'available' : 'not needed'}`);
+    if (available) await note(`install: ${JSON.stringify(await installUpdate(m))}`);
+  } catch (err) {
+    await note(`update error: ${err.message}`);
+  }
+}
+
 app.whenReady().then(() => {
   cleanOldUpdates();
   buildMenu();
   createWindow();
+  if (process.env.JOB_COSTING_E2E_MARKER) e2eHooks();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) { allowClose = false; createWindow(); } });
 });
 

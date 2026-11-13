@@ -1,6 +1,8 @@
 # Builds and publishes Job Costing on GitHub's Windows machines.
 #
-# On every push: run the tests and a real-Windows test of the in-app update swap.
+# On every push: run the tests, a real-Windows test of the in-app update swap, and an
+# end-to-end test where a real packaged exe updates itself to a newer one. A release is
+# only published if all of these pass.
 # If package.json has a version that hasn't been released yet (e.g. you raised it from
 # 1.2.0 to 1.3.0), also build the portable exe and publish it as a GitHub Release, tagged
 # v<version>, with latest.json (which the app's update button reads). The release notes,
@@ -38,6 +40,15 @@ jobs:
 
       - name: Update swap test (real Windows PowerShell)
         run: node scripts/test-swap-windows.js
+
+      - name: Build test copies (current, and a fake newer 9.9.9)
+        run: |
+          npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-old
+          npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-new -c.extraMetadata.version=9.9.9
+
+      - name: Update end to end (the real exe updates itself on Windows)
+        shell: powershell
+        run: .\scripts\e2e-update-windows.ps1 -Old e2e-old\JobCosting-Portable.exe -New e2e-new\JobCosting-Portable.exe
 
       - name: Is this version new?
         id: version
