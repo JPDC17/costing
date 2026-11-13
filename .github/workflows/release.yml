@@ -1,0 +1,66 @@
+# Builds and publishes Job Costing on GitHub's Windows machines.
+#
+# - Every push to the branch: run the tests and the Windows update-swap test.
+# - Pushing a version tag (e.g. v1.2.0): the same, then build the portable exe and publish
+#   it as a GitHub Release together with latest.json, which the app's update button reads.
+#   The tag's message becomes the release notes shown in the app.
+name: Release
+
+on:
+  push:
+    branches: [claude/tender-tesla-clm33c, main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Update swap test (real Windows PowerShell)
+        run: node scripts/test-swap-windows.js
+
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1
+          fi
+
+      - name: Build the portable exe
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx electron-builder --win portable --x64 --publish never
+
+      - name: Write latest.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN/,$d' > notes.txt
+          node scripts/write-manifest.js "$(cat notes.txt)"
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/JobCosting-Portable.exe latest.json \
+            --title "Job Costing $GITHUB_REF_NAME" --notes-file notes.txt --latest

@@ -1,5 +1,6 @@
 // Writes latest.json (what the app's "Check for updates" reads) for the exe in dist/.
-// Run after building: npm run release   (or: node scripts/write-manifest.js "What changed")
+// Run after building: npm run release   (or: node scripts/write-manifest.js "What changed").
+// The GitHub release workflow runs this too and publishes latest.json with the exe.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -15,7 +16,7 @@ if (fs.statSync(exe).mtimeMs < fs.statSync(path.join(__dirname, '..', 'package.j
 const data = fs.readFileSync(exe);
 const manifest = {
   version: pkg.version,
-  url: pkg.updates.download,
+  url: pkg.updates.download.replace('{version}', pkg.version),
   size: data.length,
   sha256: crypto.createHash('sha256').update(data).digest('hex'),
   date: new Date().toISOString().slice(0, 10),
