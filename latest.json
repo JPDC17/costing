@@ -1,8 +1,8 @@
 {
-  "version": "1.1.1",
-  "url": "https://raw.githubusercontent.com/JPDC17/costing/claude/tender-tesla-clm33c/dist/JobCosting-Portable.exe",
-  "size": 94106105,
-  "sha256": "769657b1bf7a562c6c40e262cee4395d7d02ef4976dac5f5ee575305f037c2f5",
+  "version": "1.2.0",
+  "url": "https://github.com/JPDC17/costing/releases/download/v1.2.0/JobCosting-Portable.exe",
+  "size": 94832938,
+  "sha256": "48da6ed1bc31dde53190f1c0aba45a2d56d730fee5339869a5a28efc9899698a",
   "date": "2026-11-13",
-  "notes": "Update reliability fixes: works on PCs that block PowerShell scripts, handles folder names with apostrophes, prevents double downloads, and tidies old update files."
+  "notes": "Updates now come from GitHub Releases, built and tested on Windows by GitHub. Includes the excavator logo, the charcoal and orange colours, and more reliable in-app updates."
 }

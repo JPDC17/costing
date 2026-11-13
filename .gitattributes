@@ -1,0 +1,7 @@
+# Same line endings on every machine, so Windows-built releases match the source exactly.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.ttf binary
+*.exe binary
+*.xlsx binary
