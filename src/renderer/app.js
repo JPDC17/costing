@@ -99,6 +99,7 @@ function isBadAmount(value) {
 function invalidAmountNote() {
   let n = 0;
   for (const key of Object.keys(TABLES)) for (const r of state.job[key]) if (isBadAmount(r.amount)) n++;
+  for (const q of state.job.quotes) for (const k of Calc.ESTIMATE_KEYS) if (isBadAmount(q[k])) n++;
   if (isBadAmount(state.job.materialsRemaining)) n++;
   return n ? ` — note: ${n} amount${n === 1 ? ' isn’t a number and was' : 's aren’t numbers and were'} counted as $0 (shown in red)` : '';
 }
@@ -190,6 +191,7 @@ function renderTable(key) {
   const table = el('table', { class: 'grid' }, [colgroup, thead, tbody, tfoot]);
   const addBtn = el('button', { class: 'add-row', text: '+ Add row', onclick: () => addRow(key) });
   host.replaceChildren(el('div', { class: 'table-wrap' }, table), addBtn);
+  if (key === 'quotes') renderEstimates();
   updateTotals();
 }
 
@@ -302,6 +304,7 @@ function addRow(key, focusCol = 0) {
   const tbody = document.querySelector(`[data-table="${key}"] tbody`);
   if (tbody && !tbody.querySelector('tr.empty')) {
     tbody.append(renderRow(key, row, state.job[key].length - 1));
+    if (key === 'quotes') renderEstimates();
     updateTotals();
   } else {
     renderTable(key);
@@ -330,6 +333,7 @@ function deleteRow(key, id) {
   if (tr && rows.length) {
     tr.remove();
     renumber(key);
+    if (key === 'quotes') renderEstimates();
     updateTotals();
   } else {
     renderTable(key);
@@ -440,6 +444,7 @@ function updateTotals() {
 
   renderSplit(t);
   renderSuppliers();
+  updateEstimates();
 }
 
 function renderSplit(t) {
@@ -470,6 +475,131 @@ function renderSplit(t) {
 function fmtDays(n) {
   const v = Calc.round(n, 2);
   return `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })} day${v === 1 ? '' : 's'}`;
+}
+
+// ---------- Estimated costs (one column per approved quote) ----------
+
+// Rows of the estimate table, in the order of the estimate sheet. Inputs are typed in;
+// the rest are worked out (Bid Price comes from the quote itself).
+const EST_ROWS = [
+  ...Calc.ESTIMATE_LINES.map(l => ({ key: l.key, label: l.label, input: true })),
+  { key: 'totalCost', label: 'Total Cost', cls: 'subtotal' },
+  { key: 'estOverhead', label: 'Overhead', input: true, total: 'overhead' },
+  { key: 'bid', label: 'Bid Price', cls: 'info', title: 'The quote’s Total, from Approved Quotes' },
+  { key: 'profit', label: 'Profit', cls: 'total' },
+  { key: 'margin', label: 'Margin', pct: true },
+];
+const quoteLabel = (q, i) => String(q.description || '').trim() || `Quote ${i + 1}`;
+
+function renderEstimates() {
+  const host = $('#estTable');
+  const quotes = state.job.quotes;
+  if (!quotes.length) {
+    host.replaceChildren(el('p', { class: 'hint est-empty', text: 'Add your approved quotes above. Each one gets a column here for its estimated costs.' }));
+    updateEstimates();
+    return;
+  }
+  const head = el('tr', {}, [
+    el('th', { class: 'est-label' }),
+    ...quotes.map((q, i) => el('th', { class: 'money', 'data-est-head': q.id, title: quoteLabel(q, i), text: quoteLabel(q, i) })),
+    el('th', { class: 'money est-total-col' }, [el('span', { text: 'Total' }), el('span', { class: 'est-count', id: 'estCount' })]),
+  ]);
+  const body = EST_ROWS.map((r, ri) => el('tr', { class: r.cls || '' }, [
+    el('th', { class: 'est-label', text: r.label, title: r.title }),
+    ...quotes.map((q, qi) => (r.input
+      ? el('td', { class: 'money' }, estInput(q, r.key, ri, qi))
+      : el('td', { class: 'money est-calc', 'data-est-calc': r.key, 'data-est-id': q.id }))),
+    el('td', { class: 'money est-total-col', 'data-est-total': r.total || r.key }),
+  ]));
+  const table = el('table', { class: 'grid est-grid' }, [
+    el('colgroup', {}, [el('col', { class: 'c-est-label' }), ...quotes.map(() => el('col', { class: 'c-est' })), el('col', { class: 'c-est' })]),
+    el('thead', {}, head), el('tbody', {}, body),
+  ]);
+  table.style.minWidth = `${150 + (quotes.length + 1) * 112}px`;
+  host.replaceChildren(el('div', { class: 'table-wrap' }, table));
+  updateEstimates();
+}
+
+// An amount box for one estimate figure; behaves like the amount cells in the other tables.
+function estInput(q, key, ri, qi) {
+  const input = el('input', { type: 'text', class: 'money', placeholder: '0.00', inputmode: 'decimal', 'aria-label': `${quoteLabel(q, qi)}: ${EST_ROWS[ri].label}`, 'data-est-col': qi });
+  input.value = q[key] ?? '';
+  if (!flagInvalid(input)) input.value = formatInput(q[key]);
+  input.addEventListener('input', () => { q[key] = input.value; flagInvalid(input); markDirty(); updateTotals(); });
+  input.addEventListener('focus', () => {
+    if (!input.classList.contains('invalid')) input.value = isEmpty(q[key]) ? '' : String(Calc.num(q[key]));
+    input.select();
+  });
+  input.addEventListener('blur', () => {
+    if (flagInvalid(input)) return;
+    q[key] = isEmpty(input.value) ? '' : Calc.money(input.value);
+    input.value = formatInput(q[key]);
+    updateTotals();
+  });
+  // Enter / arrows move down and up the quote's column, like filling in the estimate sheet.
+  input.addEventListener('keydown', e => {
+    const step = e.key === 'Enter' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const inputs = $$(`#estTable input[data-est-col="${qi}"]`);
+    const next = inputs[inputs.indexOf(input) + step];
+    if (next) next.focus();
+  });
+  return input;
+}
+
+// Refresh the worked-out figures (not the boxes being typed in).
+function updateEstimates() {
+  const e = Calc.estimates(state.job);
+  const pct = Calc.formatPercent;
+  state.job.quotes.forEach((q, i) => {
+    const h = document.querySelector(`[data-est-head="${CSS.escape(q.id)}"]`);
+    if (h) { h.textContent = quoteLabel(q, i); h.title = quoteLabel(q, i); }
+    const est = Calc.estimateOf(q);
+    const on = Calc.hasEstimate(q);
+    for (const td of $$(`[data-est-id="${CSS.escape(q.id)}"]`)) {
+      const k = td.dataset.estCalc;
+      // Without an estimate only the bid price means anything.
+      td.textContent = k === 'bid' ? money(est.bid) : !on ? '' : k === 'margin' ? pct(est.margin) : money(est[k]);
+      td.classList.toggle('neg', on && (k === 'profit' || k === 'margin') && est.profit < 0);
+      td.classList.toggle('pos', on && k === 'profit' && est.profit >= 0);
+    }
+  });
+  for (const td of $$('[data-est-total]')) {
+    const k = td.dataset.estTotal;
+    td.textContent = !e.any ? '' : k === 'margin' ? pct(e.total.margin) : money(e.total[k]);
+    td.classList.toggle('neg', e.any && (k === 'profit' || k === 'margin') && e.total.profit < 0);
+    td.classList.toggle('pos', e.any && k === 'profit' && e.total.profit >= 0);
+  }
+  const count = $('#estCount');
+  if (count) count.textContent = e.any && !e.complete ? `${e.count} of ${e.quoteCount} quotes` : '';
+
+  // Estimate vs actual
+  $('#estCompare').hidden = !e.any;
+  for (const r of $$('.est-row')) r.hidden = !e.any;
+  if (!e.any) return;
+  $('#e-cost').textContent = money(e.total.totalCost);
+  $('#e-actual').textContent = money(e.actualDirect);
+  $('#e-left').textContent = money(e.remaining);
+  $('#e-left').classList.toggle('neg', e.remaining < 0);
+  $('#e-profit').textContent = `${money(e.total.profit)} (${pct(e.total.margin)})`;
+  $('#e-profit').classList.toggle('neg', e.total.profit < 0);
+  $('#e-profit').classList.toggle('pos', e.total.profit >= 0);
+  const clamp = v => Math.min(Math.max(v, 0), 100);
+  $('#e-used').textContent = pct(e.usedPercent);
+  $('#e-used-bar').style.width = `${clamp(e.usedPercent)}%`;
+  $('#e-used-bar').classList.toggle('over', e.usedPercent > 100);
+  $('#e-billed').textContent = pct(e.billedPercent);
+  $('#e-billed-bar').style.width = `${clamp(e.billedPercent)}%`;
+  const notes = [];
+  if (!e.complete) notes.push(`Only ${e.count} of ${e.quoteCount} quotes have an estimate, so actual costs for the whole job are being compared with part of the estimate.`);
+  if (e.remaining < 0) notes.push(`Actual costs are ${money(-e.remaining)} over the estimate.`);
+  else if (e.usedPercent > e.billedPercent + 10 && e.billedPercent > 0) notes.push(`Costs are running ahead of billing: ${pct(e.usedPercent)} of the estimated cost is spent, but only ${pct(e.billedPercent)} of the contract is billed.`);
+  $('#e-note').textContent = notes.join(' ');
+  $('#b-est-count').textContent = e.complete ? '' : `(${e.count} of ${e.quoteCount} quotes)`;
+  $('#b-est-profit').textContent = `${money(e.total.profit)} (${pct(e.total.margin)})`;
+  $('#b-est-profit').classList.toggle('neg', e.total.profit < 0);
+  $('#b-est-used').textContent = `${pct(e.usedPercent)} of ${money(e.total.totalCost)}`;
 }
 
 function renderForecast(t, f) {
@@ -676,6 +806,7 @@ function buildReport() {
   const c = state.company;
   const t = Calc.totals(j);
   const f = Calc.forecast(j);
+  const est = Calc.estimates(j);
   const jobName = j.jobName || 'Untitled job';
   const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   // Text for the page margins on every page (see @page in styles.css).
@@ -754,6 +885,8 @@ function buildReport() {
       line(`Remaining to bill (${pct(t.billedPercent)} of contract billed)`, money(t.remainingToBill)),
       line(`Contract profit on costs to date (${pct(t.margin)})`, money(t.profit), neg(t.profit).trim()),
       f.ready ? line(`Forecast profit at completion (${pct(f.margin)})`, money(f.profit), `strong${neg(f.profit)}`) : null,
+      est.any ? line(`Estimated profit (${pct(est.total.margin)}${est.complete ? '' : `, ${est.count} of ${est.quoteCount} quotes`})`, money(est.total.profit), neg(est.total.profit).trim()) : null,
+      est.any ? line(`Estimated cost used to date (before overhead)`, `${pct(est.usedPercent)} of ${money(est.total.totalCost)}`) : null,
       line(`Supplier invoices not yet paid (${t.materialsUnpaidCount})`, money(t.materialsUnpaid)),
     ].filter(Boolean))),
     t.changeOrders ? el('p', { class: 'rp-small', text: `Change orders totalling ${money(t.changeOrders)} are listed below but are not included in the contract value.` }) : null,
@@ -778,6 +911,32 @@ function buildReport() {
       ]),
     ]),
   ]) : null;
+
+  // --- Estimated costs: one column per quote (five to a table so the figures fit the
+  // page), with the Total column on the last table.
+  let estimates = null;
+  if (est.any) {
+    const cols = est.quotes.filter(x => x.estimated).map(x => ({ head: x.description || 'Quote', x })).concat([{ head: 'Total', x: { ...est.total, estimated: true }, total: true }]);
+    const chunks = [];
+    for (let i = 0; i < cols.length; i += 5) chunks.push(cols.slice(i, i + 5));
+    const fig = (x, k) => (!x.estimated && k !== 'bid' ? '' : k === 'margin' ? (x.bid ? pct(x.margin) : '') : money(x[k]));
+    const rowsDef = [
+      ...Calc.ESTIMATE_LINES.map(l => [l.label, l.key, '']),
+      ['Total cost', 'totalCost', 'sub'], ['Overhead', 'overhead', ''], ['Bid price', 'bid', ''], ['Profit', 'profit', 'grand'], ['Margin', 'margin', ''],
+    ];
+    estimates = el('section', { class: `rp-section${chunks.length === 1 ? ' rp-keep' : ''}` }, [
+      el('h2', { text: 'Estimated costs' }),
+      el('p', { class: 'rp-small', text: `Estimated cost of each approved quote. Profit is the bid price less total cost and overhead.${est.complete ? '' : ` Only the ${est.count} of ${est.quoteCount} quotes with an estimate are shown.`}` }),
+      ...chunks.map(chunk => el('table', { class: 'rp-table rp-est rp-keep' }, [
+        el('colgroup', {}, [el('col'), ...chunk.map(() => { const e = el('col'); e.style.width = '15%'; return e; })]),
+        el('thead', {}, el('tr', {}, [el('th'), ...chunk.map(c => el('th', { class: 'num', text: c.head }))])),
+        el('tbody', {}, rowsDef.map(([label, k, cls]) => el('tr', { class: cls }, [
+          el('td', { text: label }),
+          ...chunk.map(c => el('td', { class: `num${c.total ? ' rp-strong' : ''}${(k === 'profit' || k === 'margin') && c.x.estimated && c.x.profit < 0 ? ' rp-neg' : ''}`, text: fig(c.x, k) })),
+        ]))),
+      ])),
+    ]);
+  }
 
   // --- Detail tables
   const detail = (title, key, cols, note) => {
@@ -813,6 +972,7 @@ function buildReport() {
     notes,
     summary,
     forecast,
+    estimates,
     detail('Approved quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }]),
     detail('Change orders', 'changeOrders', [{ key: 'description', label: 'Change order' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }],
       j.changeOrders.some(x => !Calc.isBlankRow(x)) ? 'Not included in the contract value.' : ''),

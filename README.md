@@ -14,6 +14,9 @@ exports to Excel with working formulas and produces a printable PDF cost report.
 
 - **Cost tracking**: labour, equipment, and material and supplier invoices, with a
   configurable overhead percentage (12% by default).
+- **Estimated costs**: enter your estimate for each approved quote (crew, material, sub,
+  grading labour, stone, trucking, overhead) and see estimated profit and how much of the
+  estimate has been spent so far.
 - **Contract and billing**: approved quotes and change orders, progress draws, and
   profit to date based on what has actually been billed.
 - **Paid tracking**: tick boxes show which draws the client has paid and which supplier
@@ -49,7 +52,7 @@ Save it anywhere and double-click it.
 | Section | What goes in it |
 | --- | --- |
 | Summary | Live totals, job details, profit to date and the forecast |
-| Quotes & Change Orders | Approved quotes (the contract value) and change orders |
+| Quotes & Change Orders | Approved quotes (the contract value), the estimated costs for each quote, and change orders |
 | Progress Draws | Each draw submitted: date, amount, and whether it's been paid |
 | Profit Forecast | Days worked, days remaining, materials still to buy |
 | Labour / Equipment | Dated cost entries |
@@ -98,6 +101,16 @@ Forecast Total Costs = Costs to date + remaining labour + remaining equipment
                        + materials still to buy, plus overhead
 Forecast Profit      = Total Contract − Forecast Total Costs
 ```
+
+Estimated costs, for each approved quote:
+
+```
+Total Cost        = Crew Cost + Material + Sub Cost + Grading Labour + Stone + Trucking
+Profit            = Bid Price (the quote's total) − Total Cost − Overhead
+Estimate Used     = actual costs before overhead ÷ estimated Total Cost
+```
+
+Only quotes with an estimate are counted in the estimate totals.
 
 Amounts are rounded to the cent the same way Excel's `ROUND` does, so the app and the
 exported workbook always agree. Paid status is for cash tracking only: profit counts

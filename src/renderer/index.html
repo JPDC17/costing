@@ -70,6 +70,8 @@
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="total"><th>Contract Profit <span class="hint">(costs to date)</span></th><td id="b-profit"></td></tr>
                 <tr><th>Contract Margin</th><td id="b-margin"></td></tr>
+                <tr class="est-row"><th>Estimated Profit <span class="hint" id="b-est-count"></span></th><td id="b-est-profit"></td></tr>
+                <tr class="est-row"><th>Estimated Cost Used <span class="hint">(costs before overhead)</span></th><td id="b-est-used"></td></tr>
                 <tr class="spacer"><td colspan="2"></td></tr>
                 <tr class="section"><th colspan="2">Progress Draws</th></tr>
                 <tr><th>Draws Submitted <span class="hint" id="b-draw-count"></span></th><td id="b-draws"></td></tr>
@@ -111,6 +113,25 @@
         <div class="card">
           <div class="card-head"><h2>Approved Quotes</h2><span class="hint">Original contract value</span></div>
           <div data-table="quotes"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Estimated Costs</h2><span class="hint">What you estimated each approved quote would cost. Bid price comes from the quote above.</span></div>
+          <div id="estTable"></div>
+          <div class="est-compare" id="estCompare" hidden>
+            <div class="draw-stats">
+              <div><div class="kpi-label">Estimated Cost <span class="kpi-note">(before overhead)</span></div><div class="stat" id="e-cost"></div></div>
+              <div><div class="kpi-label">Actual Cost to Date <span class="kpi-note">(before overhead)</span></div><div class="stat" id="e-actual"></div></div>
+              <div><div class="kpi-label">Left in Estimate</div><div class="stat" id="e-left"></div></div>
+              <div><div class="kpi-label">Estimated Profit</div><div class="stat pos" id="e-profit"></div></div>
+            </div>
+            <div class="est-bars">
+              <div class="est-bar-label"><span>Estimated cost used</span><span id="e-used"></span></div>
+              <div class="meter" aria-hidden="true"><div class="meter-fill meter-paid" id="e-used-bar"></div></div>
+              <div class="est-bar-label"><span>Contract billed</span><span id="e-billed"></span></div>
+              <div class="meter" aria-hidden="true"><div class="meter-fill" id="e-billed-bar"></div></div>
+            </div>
+            <div class="hint" id="e-note"></div>
+          </div>
         </div>
         <div class="card">
           <div class="card-head"><h2>Change Orders</h2><span class="hint">Tracked separately — not included in the contract value</span></div>

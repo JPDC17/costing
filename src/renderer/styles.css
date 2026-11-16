@@ -357,6 +357,31 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 .add-row { margin-top: 10px; border-style: dashed; color: var(--muted); }
 .add-row:hover { color: var(--ink); }
 
+/* Estimated costs: one column per approved quote, laid out like the estimate sheet. */
+.est-grid col.c-est-label { width: 150px; }
+.est-grid col.c-est { width: 112px; }
+.est-grid thead th { white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; line-height: 1.25; text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--ink); }
+.est-grid th.est-label { text-align: left; font-size: 13px; font-weight: 500; color: var(--ink); text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--line); padding: 6px 8px 6px 4px; }
+.est-grid thead th.est-label { border-bottom: 1px solid var(--line-strong); }
+.est-grid td.est-calc, .est-grid td.est-total-col { padding: 6px 8px; font-variant-numeric: tabular-nums; }
+.est-grid .est-total-col { background: var(--row-hover); font-weight: 600; }
+/* Many quotes: the row names and the Total column stay in view while scrolling sideways. */
+.est-grid .est-label { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.est-grid .est-total-col { position: sticky; right: 0; z-index: 1; box-shadow: inset 1px 0 0 var(--line); }
+.est-grid .est-count { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+.est-grid tr.subtotal th, .est-grid tr.subtotal td { font-weight: 700; border-top: 1px solid var(--line-strong); }
+.est-grid tr.info th, .est-grid tr.info td { color: var(--muted); }
+.est-grid tr.total th, .est-grid tr.total td { font-weight: 700; border-top: 2px solid var(--line-strong); }
+.est-grid td.pos { color: var(--pos); }
+.est-grid td.neg { color: var(--neg); }
+.est-grid tbody tr:hover { background: transparent; }
+.est-empty { margin: 4px 0 0; }
+.est-compare { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.est-bars { margin-top: 14px; max-width: 640px; }
+.est-bars .meter { margin: 4px 0 10px; }
+.est-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.est-bars .meter-fill.over { background: var(--neg); }
+
 /* Toast */
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
@@ -484,4 +509,9 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
   .rp-table tr { break-inside: avoid; }
   .rp-table .ctr { text-align: center; }
   .rp-table .rp-total td { border-bottom: 3px double #1f1f1f; }
+  .rp-est + .rp-est { margin-top: 14px; }
+  .rp-table.rp-est thead th.num { white-space: normal; overflow-wrap: break-word; vertical-align: bottom; padding-left: 8px; }
+  .rp-table.rp-est td.num { padding-left: 8px; }
+  .report td.rp-strong { font-weight: 700; }
+  .report td.rp-neg { color: #b3261e; }
 }

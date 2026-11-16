@@ -22,8 +22,22 @@
   // automatically and a Paid tick on its own isn't an entry, so neither counts.
   function isBlankRow(row) {
     return Object.entries(row || {}).every(([k, v]) =>
-      k === 'id' || k === 'drawNumber' || k === 'paid' || (k === 'amount' ? !num(v) : !String(v ?? '').trim()));
+      k === 'id' || k === 'drawNumber' || k === 'paid' || (isMoneyKey(k) ? !num(v) : !String(v ?? '').trim()));
   }
+  const isMoneyKey = k => k === 'amount' || ESTIMATE_KEYS.includes(k);
+
+  // Estimated costs entered for each approved quote (the Estimates screen). They're
+  // stored on the quote's own row, so they stay with it when quotes are reordered.
+  // Total Cost = the six cost lines; Profit = Bid Price - Total Cost - Overhead.
+  const ESTIMATE_LINES = [
+    { key: 'estCrew', label: 'Crew Cost' },
+    { key: 'estMaterial', label: 'Material' },
+    { key: 'estSub', label: 'Sub Cost' },
+    { key: 'estGrading', label: 'Grading Labour' },
+    { key: 'estStone', label: 'Stone' },
+    { key: 'estTrucking', label: 'Trucking' },
+  ];
+  const ESTIMATE_KEYS = [...ESTIMATE_LINES.map(l => l.key), 'estOverhead'];
 
   // Ticked as paid in the app, or Yes / Y / Paid / x / ✓ typed in an Excel Paid cell
   // (any case, spaces ignored). The Excel export's formulas accept exactly the same.
@@ -155,6 +169,44 @@
     };
   }
 
+  // A quote counts as estimated once any estimate figure has been entered (even 0).
+  function hasEstimate(q) {
+    return ESTIMATE_KEYS.some(k => String((q && q[k]) ?? '').trim() !== '');
+  }
+
+  function estimateOf(q) {
+    const lines = Object.fromEntries(ESTIMATE_LINES.map(l => [l.key, money(q[l.key])]));
+    const totalCost = round2(ESTIMATE_LINES.reduce((a, l) => a + lines[l.key], 0));
+    const overhead = money(q.estOverhead);
+    const bid = money(q.amount);
+    const profit = round2(bid - totalCost - overhead);
+    return { ...lines, totalCost, overhead, bid, profit, margin: bid ? profit / bid * 100 : 0 };
+  }
+
+  // Estimates for every approved quote, their total, and how the job is doing against
+  // them. The total only includes quotes that have an estimate, so a quote without one
+  // doesn't count its whole price as profit. Actual costs are compared before overhead
+  // (direct costs), since the estimate's overhead may be worked out differently.
+  function estimates(job) {
+    const j = normalizeJob(job);
+    const t = totals(j);
+    const quotes = j.quotes.filter(q => !isBlankRow(q)).map(q => ({
+      id: q.id, description: String(q.description || ''), estimated: hasEstimate(q), ...estimateOf(q),
+    }));
+    const done = quotes.filter(q => q.estimated);
+    const add = key => round2(done.reduce((a, q) => a + q[key], 0));
+    const total = Object.fromEntries([...ESTIMATE_LINES.map(l => l.key), 'totalCost', 'overhead', 'bid', 'profit'].map(k => [k, add(k)]));
+    total.margin = total.bid ? total.profit / total.bid * 100 : 0;
+    return {
+      quotes, total,
+      count: done.length, quoteCount: quotes.length, any: done.length > 0, complete: quotes.length > 0 && done.length === quotes.length,
+      actualDirect: t.subtotal,
+      usedPercent: total.totalCost ? t.subtotal / total.totalCost * 100 : 0,
+      remaining: round2(total.totalCost - t.subtotal),
+      billedPercent: t.billedPercent,
+    };
+  }
+
   // Days can't be negative; anything that isn't a number counts as 0.
   function days(v) {
     const n = num(v);
@@ -208,5 +260,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, hasEstimate, estimateOf, estimates, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

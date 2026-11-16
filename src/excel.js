@@ -8,6 +8,7 @@ const MONEY = '"$"#,##0.00';
 const ACCT = '_-"$"* #,##0.00_-;\\-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-';
 const SHEETS = {
   quotes: 'Approved Quotes',
+  estimates: 'Estimates',
   draws: 'Progress Draws',
   labour: 'Labour',
   equipment: 'Equipment',
@@ -122,6 +123,72 @@ async function exportWorkbook(job, filePath, company) {
   const quotesTotalRow = writeQuoteSection(wsQ, 2, 'Approved Quotes', job.quotes);
   const coStart = quotesTotalRow + 2;
   const coTotalRow = writeQuoteSection(wsQ, coStart, 'Change Orders', job.changeOrders);
+
+  // --- Estimates: one column per approved quote, like the estimate sheet. Cost lines
+  // and overhead are inputs; the rest are formulas. A quote with no figures entered
+  // shows no total/profit, and the Total column only adds up quotes that have one.
+  const wsE = wb.addWorksheet(SHEETS.estimates);
+  const est = Calc.estimates(job);
+  const nq = job.quotes.length;
+  const colL = i => wsE.getColumn(i + 1).letter; // 0 -> A
+  wsE.getCell('A1').value = 'Estimated Costs'; wsE.getCell('A1').font = { bold: true, size: 14 };
+  const E = { head: 2, line0: 3, total: 3 + Calc.ESTIMATE_LINES.length };
+  E.overhead = E.total + 1; E.bid = E.total + 2; E.profit = E.total + 3; E.margin = E.total + 4;
+  const labels = [...Calc.ESTIMATE_LINES.map(l => l.label), 'Total Cost', 'Overhead', 'Bid Price', 'Profit', 'Margin'];
+  labels.forEach((l, i) => { const c = wsE.getCell(E.line0 + i, 1); c.value = l; bold(c); });
+  const totalCol = nq + 2; // B.. for quotes, then Total
+  const tc = colL(totalCol - 1);
+  const inputFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFECCC' } };
+  job.quotes.forEach((x, i) => {
+    const col = i + 2, L = colL(col - 1), src = 3 + i; // quote row on Approved Quotes
+    const e = est.quotes[i];
+    const head = wsE.getCell(E.head, col);
+    head.value = { formula: `""&${q(SHEETS.quotes)}!A${src}`, result: x.description || '' };
+    head.font = { bold: true }; head.alignment = { wrapText: true, horizontal: 'right', vertical: 'bottom' };
+    head.border = { bottom: { style: 'thin' } };
+    const put = (row, key) => {
+      const c = wsE.getCell(row, col);
+      c.value = String(x[key] ?? '').trim() === '' ? null : Calc.money(x[key]);
+      c.numFmt = MONEY; c.fill = inputFill;
+    };
+    Calc.ESTIMATE_LINES.forEach((l, li) => put(E.line0 + li, l.key));
+    put(E.overhead, 'estOverhead');
+    const inputs = `${L}${E.line0}:${L}${E.total - 1},${L}${E.overhead}`;
+    const on = `COUNT(${inputs})>0`;
+    const cell = (row, formula, result, fmt = MONEY) => {
+      const c = wsE.getCell(row, col);
+      c.value = { formula, result }; c.numFmt = fmt;
+      return c;
+    };
+    cell(E.total, `IF(${on},SUM(${L}${E.line0}:${L}${E.total - 1}),"")`, e.estimated ? e.totalCost : '');
+    bold(wsE.getCell(E.total, col));
+    cell(E.bid, `${q(SHEETS.quotes)}!B${src}`, e.bid);
+    bold(cell(E.profit, `IF(${on},${L}${E.bid}-${L}${E.total}-N(${L}${E.overhead}),"")`, e.estimated ? e.profit : ''));
+    cell(E.margin, `IF(AND(${on},N(${L}${E.bid})<>0),${L}${E.profit}/${L}${E.bid},"")`, e.estimated && e.bid ? e.margin / 100 : '', '0.0%');
+  });
+  // Total column: sums of the quotes that have an estimate.
+  const hc = wsE.getCell(E.head, totalCol);
+  hc.value = 'Total'; bold(hc); hc.alignment = { horizontal: 'right', vertical: 'bottom' }; hc.border = { bottom: { style: 'thin' } };
+  if (nq) {
+    const first = colL(1), last = colL(nq);
+    const along = row => `${first}${row}:${last}${row}`;
+    const has = `(${along(E.total)}<>"")`;
+    const tot = (row, formula, result, fmt = MONEY) => {
+      const c = wsE.getCell(row, totalCol);
+      c.value = { formula, result }; c.numFmt = fmt; bold(c);
+    };
+    Calc.ESTIMATE_LINES.forEach((l, li) => tot(E.line0 + li, `SUM(${along(E.line0 + li)})`, est.total[l.key]));
+    tot(E.total, `SUM(${along(E.total)})`, est.total.totalCost);
+    tot(E.overhead, `SUM(${along(E.overhead)})`, est.total.overhead);
+    tot(E.bid, `SUMPRODUCT(${has}*${along(E.bid)})`, est.total.bid);
+    tot(E.profit, `SUM(${along(E.profit)})`, est.total.profit);
+    tot(E.margin, `IF(${tc}${E.bid}=0,"",${tc}${E.profit}/${tc}${E.bid})`, est.total.bid ? est.total.margin / 100 : '', '0.0%');
+  }
+  for (const row of [E.total]) for (let c = 1; c <= totalCol; c++) wsE.getCell(row, c).border = { top: { style: 'thin' } };
+  for (const row of [E.profit]) for (let c = 1; c <= totalCol; c++) wsE.getCell(row, c).border = { top: { style: 'thin' }, bottom: { style: 'double' } };
+  wsE.getCell(E.margin + 2, 1).value = 'Shaded cells can be changed. Bid Price comes from Approved Quotes; Profit = Bid Price - Total Cost - Overhead.';
+  wsE.getCell(E.margin + 2, 1).font = { italic: true, color: { argb: 'FF666666' } };
+  const estProfitRef = nq ? `${q(SHEETS.estimates)}!${tc}${E.profit}` : null;
 
   // --- Progress Draws ---
   const wsD = wb.addWorksheet(SHEETS.draws);
@@ -293,11 +360,17 @@ async function exportWorkbook(job, filePath, company) {
   tr++;
 
   line(tr, 'Change Orders (not included)', `${q(SHEETS.quotes)}!B${coTotalRow}`, t.changeOrders); tr += 2;
+  if (estProfitRef && est.any) { line(tr, 'Estimated Profit (from Estimates)', `N(${estProfitRef})`, est.total.profit); tr += 2; }
   line(tr, 'Unpaid Supplier Invoices', unpaidRef, t.materialsUnpaid);
 
   // Company name in the printed page header; logo at the top right of Total Breakdown.
   const printHeader = company.name || job.jobName ? `&L&9&B${hf(company.name)}&R&9${hf(job.jobName)}` : '';
   finishSheet(wsQ, 2, false, printHeader);
+  finishSheet(wsE, E.head, true, printHeader);
+  wsE.getColumn(1).width = 18;
+  for (let c = 2; c <= totalCol; c++) wsE.getColumn(c).width = 16;
+  wsE.getRow(E.head).height = 32;
+  wsE.views = [{ state: 'frozen', xSplit: 1, ySplit: E.head }];
   finishSheet(wsD, 1, true, printHeader);
   finishSheet(wb.getWorksheet(SHEETS.labour), 1, false, printHeader);
   finishSheet(wb.getWorksheet(SHEETS.equipment), 1, false, printHeader);
@@ -406,6 +479,19 @@ async function importWorkbook(filePath) {
       // Skip an optional header row directly under the "Change Orders" label.
       const next = text(wsQ.getRow(coRow + 1).getCell(2)).toLowerCase();
       job.changeOrders = readRows(wsQ, next === 'total' ? coRow + 2 : coRow + 1, quoteMap);
+    }
+  }
+  // Estimates: columns match the quotes in order; rows are found by their labels.
+  const wsE = get(SHEETS.estimates);
+  if (wsE && job.quotes.length) {
+    const keyOf = Object.fromEntries([...Calc.ESTIMATE_LINES.map(l => [l.label.toLowerCase(), l.key]), ['overhead', 'estOverhead']]);
+    for (let r = 1; r <= wsE.rowCount; r++) {
+      const key = keyOf[text(wsE.getRow(r).getCell(1)).toLowerCase()];
+      if (!key) continue;
+      job.quotes.forEach((x, i) => {
+        const v = cellValue(wsE.getRow(r).getCell(i + 2));
+        if (v !== null && String(v).trim() !== '') x[key] = typeof v === 'number' ? Calc.round2(v) : Calc.num(v);
+      });
     }
   }
   const wsD = get(SHEETS.draws);
