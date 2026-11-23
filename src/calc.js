@@ -22,7 +22,7 @@
   // automatically and a Paid tick on its own isn't an entry, so neither counts.
   function isBlankRow(row) {
     return Object.entries(row || {}).every(([k, v]) =>
-      k === 'id' || k === 'drawNumber' || k === 'paid' || (isMoneyKey(k) ? !num(v) : !String(v ?? '').trim()));
+      k === 'id' || k === 'drawNumber' || k === 'paid' || k === 'estItem' || (isMoneyKey(k) ? !num(v) : !String(v ?? '').trim()));
   }
   const isMoneyKey = k => k === 'amount' || ESTIMATE_KEYS.includes(k);
 
@@ -207,6 +207,49 @@
     };
   }
 
+  // Which estimate line (Crew Cost, Material, ...) a labour, equipment or invoice row
+  // counts against: its estItem holds the line's key. Also accepts the label as typed
+  // in Excel ("crew cost", any case, spaces ignored). '' = not linked.
+  const COST_KEYS = ['labour', 'equipment', 'materials'];
+  function estItemOf(row) {
+    const v = String((row && row.estItem) ?? '').trim().toLowerCase();
+    if (!v) return '';
+    const l = ESTIMATE_LINES.find(x => x.key.toLowerCase() === v || x.label.toLowerCase() === v);
+    return l ? l.key : '';
+  }
+
+  // Estimate vs actual for each estimate line. Estimated = the line's total over the
+  // quotes that have an estimate; actual = the cost rows linked to that line. Costs not
+  // linked to any line are shown separately so the totals still add up. Overhead
+  // compares the estimate's overhead with the app's overhead on actual costs.
+  function estimateByItem(job) {
+    const j = normalizeJob(job);
+    const t = totals(j);
+    const e = estimates(j);
+    const actual = Object.fromEntries(ESTIMATE_LINES.map(l => [l.key, 0]));
+    const counts = Object.fromEntries(ESTIMATE_LINES.map(l => [l.key, 0]));
+    let unlinkedCount = 0;
+    for (const k of COST_KEYS) {
+      for (const r of j[k]) {
+        if (isBlankRow(r)) continue;
+        const item = estItemOf(r);
+        if (item) { actual[item] += money(r.amount); counts[item]++; } else unlinkedCount++;
+      }
+    }
+    const row = (key, label, estimated, act, count) => ({
+      key, label, estimated, actual: act, count,
+      left: round2(estimated - act),
+      usedPercent: estimated ? act / estimated * 100 : 0,
+    });
+    const lines = ESTIMATE_LINES.map(l => row(l.key, l.label, e.total[l.key], round2(actual[l.key]), counts[l.key]));
+    const linked = round2(lines.reduce((a, l) => a + l.actual, 0));
+    const unlinked = row('', 'Not linked to an estimate item', 0, round2(t.subtotal - linked), unlinkedCount);
+    const subtotal = row('subtotal', 'Total before overhead', e.total.totalCost, t.subtotal, 0);
+    const overhead = row('overhead', 'Overhead', e.total.overhead, t.overhead, 0);
+    const total = row('total', 'Total with overhead', round2(e.total.totalCost + e.total.overhead), t.totalCosts, 0);
+    return { lines, unlinked, subtotal, overhead, total, linkedCount: lines.reduce((a, l) => a + l.count, 0), any: e.any };
+  }
+
   // Days can't be negative; anything that isn't a number counts as 0.
   function days(v) {
     const n = num(v);
@@ -260,5 +303,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, hasEstimate, estimateOf, estimates, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, COST_KEYS, hasEstimate, estimateOf, estimates, estItemOf, estimateByItem, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

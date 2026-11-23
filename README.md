@@ -15,8 +15,8 @@ exports to Excel with working formulas and produces a printable PDF cost report.
 - **Cost tracking**: labour, equipment, and material and supplier invoices, with a
   configurable overhead percentage (12% by default).
 - **Estimated costs**: enter your estimate for each approved quote (crew, material, sub,
-  grading labour, stone, trucking, overhead) and see estimated profit and how much of the
-  estimate has been spent so far.
+  grading labour, stone, trucking, overhead) and see estimated profit. Link each cost line
+  to an estimate item to compare estimate against actual, item by item.
 - **Contract and billing**: approved quotes and change orders, progress draws, and
   profit to date based on what has actually been billed.
 - **Paid tracking**: tick boxes show which draws the client has paid and which supplier
@@ -55,8 +55,8 @@ Save it anywhere and double-click it.
 | Quotes & Change Orders | Approved quotes (the contract value), the estimated costs for each quote, and change orders |
 | Progress Draws | Each draw submitted: date, amount, and whether it's been paid |
 | Profit Forecast | Days worked, days remaining, materials still to buy |
-| Labour / Equipment | Dated cost entries |
-| Materials & Suppliers | Supplier invoices, with totals per company and a Paid tick box |
+| Labour / Equipment | Dated cost entries, each linked to an estimate item if you like |
+| Materials & Suppliers | Supplier invoices, with totals per company, a Paid tick box and an estimate item |
 | Company & Logo | Your company name, contact details and logo |
 
 Jobs are saved as `.jobcost` files.
@@ -111,6 +111,16 @@ Estimate Used     = actual costs before overhead ÷ estimated Total Cost
 ```
 
 Only quotes with an estimate are counted in the estimate totals.
+
+Each labour, equipment and invoice line can be linked to an estimate item (Crew Cost,
+Material, Sub Cost, Grading Labour, Stone or Trucking) in its **Estimate Item** column.
+The app then compares each item's estimate with the actual costs linked to it:
+
+```
+Actual (item)     = sum of the cost lines linked to that item
+Left in Estimate  = Estimated − Actual         (shown as "Over" when negative)
+Not linked        = costs not linked to any item, so the totals still add up
+```
 
 Amounts are rounded to the cent the same way Excel's `ROUND` does, so the app and the
 exported workbook always agree. Paid status is for cash tracking only: profit counts

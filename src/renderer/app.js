@@ -37,6 +37,7 @@ const TABLES = {
       { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3 – Mar 7', width: '24%' },
       { key: 'description', label: 'Description', type: 'text', placeholder: 'Crew / trade / hours' },
       { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'estItem', label: 'Estimate Item', type: 'item', title: 'Which line of your estimate this cost counts against' },
     ],
   },
   equipment: {
@@ -45,6 +46,7 @@ const TABLES = {
       { key: 'date', label: 'Date(s)', type: 'text', placeholder: 'e.g. Mar 3', width: '24%' },
       { key: 'description', label: 'Description', type: 'text', placeholder: 'Machine / rental' },
       { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'estItem', label: 'Estimate Item', type: 'item', title: 'Which line of your estimate this cost counts against' },
     ],
   },
   materials: {
@@ -55,6 +57,7 @@ const TABLES = {
       { key: 'amount', label: 'Amount', type: 'money' },
       { key: 'paid', label: 'Paid', type: 'check', title: 'Tick when you have paid this invoice' },
       { key: 'notes', label: 'Notes', type: 'text' },
+      { key: 'estItem', label: 'Estimate Item', type: 'item', title: 'Which line of your estimate this cost counts against' },
     ],
   },
 };
@@ -182,7 +185,7 @@ function renderTable(key) {
   const colgroup = el('colgroup', {}, [
     idx ? el('col', { class: 'c-num' }) : null,
     ...def.cols.map(c => {
-      const col = el('col', { class: c.type === 'money' ? 'c-money' : c.type === 'check' ? 'c-check' : '' });
+      const col = el('col', { class: c.type === 'money' ? 'c-money' : c.type === 'check' ? 'c-check' : c.type === 'item' ? 'c-item' : '' });
       if (c.width) col.style.width = c.width;
       return col;
     }),
@@ -190,9 +193,52 @@ function renderTable(key) {
   ]);
   const table = el('table', { class: 'grid' }, [colgroup, thead, tbody, tfoot]);
   const addBtn = el('button', { class: 'add-row', text: '+ Add row', onclick: () => addRow(key) });
-  host.replaceChildren(el('div', { class: 'table-wrap' }, table), addBtn);
+  const tools = def.cols.some(c => c.type === 'item') && rows.length
+    ? el('div', { class: 'table-tools' }, [addBtn, bulkItemPicker(key)])
+    : addBtn;
+  host.replaceChildren(el('div', { class: 'table-wrap' }, table), tools);
   if (key === 'quotes') renderEstimates();
   updateTotals();
+}
+
+// Dropdown of the estimate's cost lines; '' means the cost isn't linked to any of them.
+function itemSelect(value, title) {
+  const sel = el('select', { 'aria-label': 'Estimate item', title }, [
+    el('option', { value: '', text: '—' }),
+    ...Calc.ESTIMATE_LINES.map(l => el('option', { value: l.key, text: l.label })),
+  ]);
+  sel.value = value || '';
+  sel.classList.toggle('unset', !sel.value);
+  return sel;
+}
+
+// "Set every row to …": links a whole table to one estimate item at once (with undo).
+function bulkItemPicker(key) {
+  const sel = el('select', { 'aria-label': 'Set the estimate item of every row' }, [
+    el('option', { value: '*', text: 'Choose…' }),
+    el('option', { value: '', text: '— (not linked)' }),
+    ...Calc.ESTIMATE_LINES.map(l => el('option', { value: l.key, text: l.label })),
+  ]);
+  sel.addEventListener('change', () => {
+    if (sel.value === '*') return;
+    const rows = state.job[key];
+    const before = rows.map(r => r.estItem);
+    const label = sel.value ? Calc.ESTIMATE_LINES.find(l => l.key === sel.value).label : 'not linked';
+    for (const r of rows) r.estItem = sel.value;
+    markDirty();
+    renderTable(key);
+    toast(`Every row set to ${label}`, {
+      label: 'Undo',
+      run: () => {
+        if (state.job[key] !== rows) return;
+        rows.forEach((r, i) => { r.estItem = before[i]; });
+        markDirty();
+        renderTable(key);
+        $('#toast').classList.remove('show');
+      },
+    });
+  });
+  return el('label', { class: 'bulk-item' }, ['Set every row’s estimate item to ', sel]);
 }
 
 function renderRow(key, row, i) {
@@ -200,6 +246,19 @@ function renderRow(key, row, i) {
   const tr = el('tr', { 'data-id': row.id });
   if (!def.hideIndex) tr.append(el('td', { class: 'num', text: String(i + 1) }));
   def.cols.forEach((c, ci) => {
+    if (c.type === 'item') {
+      const sel = itemSelect(Calc.estItemOf(row), c.title);
+      sel.addEventListener('change', () => {
+        row[c.key] = sel.value;
+        sel.classList.toggle('unset', !sel.value);
+        markDirty();
+        updateTotals();
+      });
+      // Arrow keys change the choice in a dropdown, so only Enter moves to the next row.
+      sel.addEventListener('keydown', e => { if (e.key === 'Enter') onCellKey(e, key, row, ci); });
+      tr.append(el('td', { class: 'item' }, sel));
+      return;
+    }
     if (c.type === 'check') {
       const box = el('input', { type: 'checkbox', 'aria-label': c.title || c.label, title: c.title });
       box.checked = Calc.isPaid(row);
@@ -290,7 +349,7 @@ function onCellKey(e, key, row, ci) {
 function focusCell(key, rowIdx, colIdx) {
   const host = document.querySelector(`[data-table="${key}"]`);
   const tr = host.querySelectorAll('tbody tr')[rowIdx];
-  const input = tr && tr.querySelectorAll('input')[colIdx];
+  const input = tr && tr.querySelectorAll('input, select')[colIdx];
   if (input) input.focus();
 }
 
@@ -298,6 +357,9 @@ function addRow(key, focusCol = 0) {
   const row = { id: newId() };
   for (const c of TABLES[key].cols) row[c.key] = '';
   if (key === 'draws') row.drawNumber = String(nextDrawNumber());
+  // A new row starts with the same estimate item as the row above (e.g. a run of crew costs).
+  const prev = state.job[key][state.job[key].length - 1];
+  if ('estItem' in row && prev) row.estItem = Calc.estItemOf(prev);
   state.job[key].push(row);
   markDirty();
   // Add just the new row (redrawing a long table on every add is slow).
@@ -596,10 +658,50 @@ function updateEstimates() {
   if (e.remaining < 0) notes.push(`Actual costs are ${money(-e.remaining)} over the estimate.`);
   else if (e.usedPercent > e.billedPercent + 10 && e.billedPercent > 0) notes.push(`Costs are running ahead of billing: ${pct(e.usedPercent)} of the estimated cost is spent, but only ${pct(e.billedPercent)} of the contract is billed.`);
   $('#e-note').textContent = notes.join(' ');
+  renderByItem();
   $('#b-est-count').textContent = e.complete ? '' : `(${e.count} of ${e.quoteCount} quotes)`;
   $('#b-est-profit').textContent = `${money(e.total.profit)} (${pct(e.total.margin)})`;
   $('#b-est-profit').classList.toggle('neg', e.total.profit < 0);
   $('#b-est-used').textContent = `${pct(e.usedPercent)} of ${money(e.total.totalCost)}`;
+}
+
+// Estimate vs actual for each estimate line, from the costs linked to it.
+function renderByItem() {
+  const r = Calc.estimateByItem(state.job);
+  const pct = Calc.formatPercent;
+  // The page's security policy blocks inline style attributes, so set the width directly.
+  const bar = (w, over) => { const i = el('i', { class: over ? 'over' : '' }); i.style.width = `${w}%`; return i; };
+  const row = (l, cls = '') => {
+    const over = l.left < 0;
+    const noEst = !l.estimated && l.actual;
+    const used = l.estimated ? Math.min(Math.max(l.usedPercent, 0), 100) : 0;
+    return el('tr', { class: cls }, [
+      el('th', {}, [l.label, l.count ? el('span', { class: 'hint', text: ` (${l.count})` }) : null]),
+      el('td', { text: l.key === '' ? '' : money(l.estimated) }),
+      el('td', { text: money(l.actual) }),
+      el('td', { class: over && l.key !== '' ? 'neg' : '', text: l.key === '' ? '' : over ? `Over ${money(-l.left)}` : money(l.left) }),
+      el('td', { class: 'used' }, l.key === '' ? null : noEst ? el('span', { class: 'neg', text: 'Not in estimate' }) : [
+        el('span', { class: `used-pct${l.usedPercent > 100 ? ' neg' : ''}`, text: l.estimated ? pct(l.usedPercent) : '' }),
+        l.estimated ? el('span', { class: 'mini-meter' }, bar(used, l.usedPercent > 100)) : null,
+      ]),
+    ]);
+  };
+  const unlinked = r.unlinked.actual || r.unlinked.count;
+  $('#estByItem').replaceChildren(
+    el('div', { class: 'card-head' }, [el('h2', { text: 'Estimate vs Actual by Item' }),
+      el('span', { class: 'hint', text: 'Link each cost to an estimate item in the Estimate Item column on the Labour, Equipment and Materials & Suppliers pages.' })]),
+    el('div', { class: 'table-wrap' }, el('table', { class: 'breakdown by-item' }, [
+      el('thead', {}, el('tr', {}, ['Estimate item', 'Estimated', 'Actual to date', 'Left in estimate', 'Used'].map((h, i) => el('th', { class: i ? 'num' : '', text: h })))),
+      el('tbody', {}, [
+        ...r.lines.map(l => row(l)),
+        unlinked ? row(r.unlinked, 'info') : null,
+        row(r.subtotal, 'total'),
+        row(r.overhead),
+        row(r.total, 'total'),
+      ].filter(Boolean)),
+    ])),
+    ...(r.linkedCount ? [] : [el('p', { class: 'hint', text: 'No costs are linked yet, so every actual cost shows as not linked.' })]),
+  );
 }
 
 function renderForecast(t, f) {
@@ -938,11 +1040,48 @@ function buildReport() {
     ]);
   }
 
+  // --- Estimate vs actual by item (costs linked to each estimate line)
+  let byItem = null;
+  if (est.any) {
+    const b = Calc.estimateByItem(j);
+    const brow = (l, cls = '') => {
+      const linkedRow = l.key !== '';
+      return el('tr', { class: cls }, [
+        el('td', { text: `${l.label}${l.count ? ` (${l.count})` : ''}` }),
+        el('td', { class: 'num', text: linkedRow ? money(l.estimated) : '' }),
+        el('td', { class: 'num', text: money(l.actual) }),
+        el('td', { class: `num${linkedRow && l.left < 0 ? ' rp-neg' : ''}`, text: linkedRow ? acct(l.left) : '' }),
+        el('td', { class: `num${l.usedPercent > 100 ? ' rp-neg' : ''}`, text: !linkedRow ? '' : l.estimated ? pct(l.usedPercent) : (l.actual ? 'Not in estimate' : '') }),
+      ]);
+    };
+    byItem = el('section', { class: 'rp-section rp-keep' }, [
+      el('h2', { text: 'Estimate against actual cost, by item' }),
+      el('p', { class: 'rp-small', text: `Actual costs are the labour, equipment and invoice lines linked to each estimate item.${b.linkedCount ? '' : ' No costs have been linked to an estimate item yet.'} Amounts over the estimate are shown in brackets.` }),
+      el('table', { class: 'rp-table' }, [
+        el('colgroup', {}, [el('col'), ...[0, 1, 2, 3].map(i => { const e = el('col'); e.style.width = i === 3 ? '12%' : '17%'; return e; })]),
+        el('thead', {}, el('tr', {}, ['Estimate item', 'Estimated', 'Actual to date', 'Left in estimate', 'Used'].map((h, i) => el('th', { class: i ? 'num' : '', text: h })))),
+        el('tbody', {}, [
+          ...b.lines.map(l => brow(l)),
+          b.unlinked.actual || b.unlinked.count ? brow(b.unlinked) : null,
+          brow(b.subtotal, 'sub'),
+          brow(b.overhead),
+          brow(b.total, 'grand'),
+        ].filter(Boolean)),
+      ]),
+    ]);
+  }
+
   // --- Detail tables
+  // The Estimate item column is only added to a cost table when some of its lines are linked.
+  const itemName = x => { const k = Calc.estItemOf(x); return k ? Calc.ESTIMATE_LINES.find(l => l.key === k).label : ''; };
+  const withItem = (key, cols) => (j[key].some(x => !Calc.isBlankRow(x) && Calc.estItemOf(x))
+    ? [...cols.slice(0, -1), { key: 'estItem', label: 'Estimate item', item: true, w: '15%' }, cols[cols.length - 1]]
+    : cols);
   const detail = (title, key, cols, note) => {
+    cols = withItem(key, cols);
     const rows = j[key].filter(x => !Calc.isBlankRow(x));
     const cell = (col, text) => el('td', { class: col.money ? 'num' : col.check ? 'ctr' : '', text });
-    const value = (x, col) => (col.money ? money(x[col.key]) : col.check ? (Calc.isPaid(x) ? 'Paid' : '') : (x[col.key] || ''));
+    const value = (x, col) => (col.money ? money(x[col.key]) : col.check ? (Calc.isPaid(x) ? 'Paid' : '') : col.item ? itemName(x) : (x[col.key] || ''));
     return el('section', { class: `rp-section${rows.length <= 12 ? ' rp-keep' : ''}` }, [
       el('h2', { text: title }),
       note ? el('p', { class: 'rp-small', text: note }) : null,
@@ -973,6 +1112,7 @@ function buildReport() {
     summary,
     forecast,
     estimates,
+    byItem,
     detail('Approved quotes', 'quotes', [{ key: 'description', label: 'Quote' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }]),
     detail('Change orders', 'changeOrders', [{ key: 'description', label: 'Change order' }, { key: 'notes', label: 'Notes', w: '32%' }, { key: 'amount', label: 'Amount', money: true, w: '17%' }],
       j.changeOrders.some(x => !Calc.isBlankRow(x)) ? 'Not included in the contract value.' : ''),

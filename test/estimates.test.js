@@ -114,3 +114,87 @@ test('Excel: a job without estimates gets an empty Estimates sheet and no estima
   const back = await importWorkbook(file);
   assert.ok(back.quotes.every(q => !Calc.hasEstimate(q)));
 });
+
+test('by item: linked costs are compared with each estimate line; the rest is shown as not linked', () => {
+  const j = {
+    ...job,
+    labour: [{ amount: 12000, estItem: 'estCrew' }, { amount: 3000, estItem: 'estGrading' }, { amount: 500 }],
+    equipment: [{ amount: 2500, estItem: 'Trucking' }], // a label typed in Excel counts too
+    materials: [{ supplier: 'A', amount: 20000.25, estItem: 'estMaterial' }, { supplier: 'B', amount: 999, estItem: 'nonsense' }],
+  };
+  const r = Calc.estimateByItem(j);
+  const get = k => r.lines.find(l => l.key === k);
+  const e = Calc.estimates(j);
+  assert.strictEqual(get('estCrew').estimated, e.total.estCrew);
+  assert.strictEqual(get('estCrew').actual, 12000);
+  assert.strictEqual(get('estCrew').left, Calc.round2(e.total.estCrew - 12000));
+  assert.strictEqual(get('estMaterial').actual, 20000.25);
+  assert.strictEqual(get('estGrading').actual, 3000);
+  assert.strictEqual(get('estTrucking').actual, 2500);
+  assert.strictEqual(get('estSub').actual, 0);
+  assert.strictEqual(r.unlinked.actual, 1499); // the unlinked labour row and the unknown item
+  assert.strictEqual(r.unlinked.count, 2);
+  const t = Calc.totals(j);
+  // everything adds back up to the job's own totals
+  assert.strictEqual(Calc.round2(r.lines.reduce((a, l) => a + l.actual, 0) + r.unlinked.actual), t.subtotal);
+  assert.strictEqual(r.subtotal.actual, t.subtotal);
+  assert.strictEqual(r.subtotal.estimated, e.total.totalCost);
+  assert.strictEqual(r.overhead.actual, t.overhead);
+  assert.strictEqual(r.total.actual, t.totalCosts);
+  assert.strictEqual(r.total.estimated, Calc.round2(e.total.totalCost + e.total.overhead));
+});
+
+test('by item: picking an estimate item alone does not make a row count as filled in', () => {
+  assert.strictEqual(Calc.isBlankRow({ id: 'r1', date: '', description: '', amount: '', estItem: 'estCrew' }), true);
+  assert.strictEqual(Calc.estItemOf({ estItem: '  GRADING labour ' }), 'estGrading');
+  assert.strictEqual(Calc.estItemOf({ estItem: '' }), '');
+  assert.strictEqual(Calc.estItemOf({}), '');
+});
+
+test('Excel: Estimate Item columns, dropdowns, by-item formulas, and import back', async () => {
+  const j = {
+    ...job,
+    labour: [{ date: 'Wk 1', description: 'Crew', amount: 12000, estItem: 'estCrew' }, { date: 'Wk 2', description: 'Grader', amount: 3000, estItem: 'estGrading' }, { date: 'Wk 3', description: 'Misc', amount: 500 }],
+    equipment: [{ date: 'Jan', description: 'Trucks', amount: 2500, estItem: 'estTrucking' }],
+    materials: [{ supplier: 'A', invoiceNumber: '1', amount: 20000.25, notes: '', paid: false, estItem: 'estMaterial' }],
+  };
+  const file = tmp('items.xlsx');
+  await exportWorkbook(j, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const lab = wb.getWorksheet(SHEETS.labour);
+  assert.strictEqual(lab.getCell('D1').value, 'Estimate Item');
+  assert.strictEqual(lab.getCell('D2').value, 'Crew Cost');
+  assert.strictEqual(lab.getCell('D4').value, '');
+  assert.strictEqual(lab.getCell('D2').dataValidation.type, 'list');
+  const mat = wb.getWorksheet(SHEETS.materials);
+  assert.strictEqual(mat.getCell('F3').value, 'Estimate Item');
+  assert.strictEqual(mat.getCell('F4').value, 'Material');
+  assert.strictEqual(mat.getCell('H3').value, 'Company Totals');
+  const ws = wb.getWorksheet(SHEETS.estimates);
+  const rowsOf = label => [...Array(ws.rowCount).keys()].map(i => i + 1).filter(r => ws.getCell(r, 1).value === label);
+  const crew = rowsOf('Crew Cost')[1]; // second "Crew Cost" row is in the comparison
+  const r = Calc.estimateByItem(j);
+  assert.strictEqual(ws.getCell(crew, 3).value.result, 12000);
+  assert.match(ws.getCell(crew, 3).value.formula, /SUMPRODUCT\(\(TRIM\('Labour'!D2:D4&""\)="Crew Cost"\)\*'Labour'!B2:B4\)/);
+  assert.strictEqual(ws.getCell(rowsOf('Not linked to an estimate item')[0], 3).value.result, r.unlinked.actual);
+  assert.strictEqual(ws.getCell(rowsOf('Total with overhead')[0], 3).value.result, Calc.totals(j).totalCosts);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual(back.labour.map(x => x.estItem), ['estCrew', 'estGrading', undefined]);
+  assert.deepStrictEqual(back.equipment.map(x => x.estItem), ['estTrucking']);
+  assert.deepStrictEqual(back.materials.map(x => x.estItem), ['estMaterial']);
+  // the comparison rows under the estimate table aren't read back as estimates
+  assert.deepStrictEqual(Calc.estimates(back).total, Calc.estimates(j).total);
+  assert.deepStrictEqual(Calc.estimateByItem(back), Calc.estimateByItem(j));
+});
+
+test('Excel: an Estimate Item typed by hand (any case) is understood on import', async () => {
+  const file = tmp('typed.xlsx');
+  await exportWorkbook({ ...job, labour: [{ date: 'x', description: 'y', amount: 100 }] }, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  wb.getWorksheet(SHEETS.labour).getCell('D2').value = '  grading LABOUR ';
+  await wb.xlsx.writeFile(file);
+  const back = await importWorkbook(file);
+  assert.strictEqual(back.labour[0].estItem, 'estGrading');
+});

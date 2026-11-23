@@ -382,6 +382,35 @@ button.icon.danger:hover { color: var(--neg); background: var(--neg-soft); }
 .est-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .est-bars .meter-fill.over { background: var(--neg); }
 
+/* Estimate Item dropdown in the cost tables */
+.grid col.c-item { width: 150px; }
+.grid td.item select {
+  width: 100%; border: 1px solid transparent; background: transparent; color: var(--ink);
+  padding: 5px 4px; border-radius: 4px; font: inherit; cursor: pointer;
+}
+.grid td.item select.unset { color: var(--muted); }
+.grid td.item select:hover { border-color: var(--line); }
+.grid td.item select:focus { outline: none; border-color: var(--accent); background: var(--field); box-shadow: 0 0 0 3px var(--accent-soft); }
+.grid td.item select option { color: var(--ink); background: var(--panel); }
+.table-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.table-tools .add-row { margin-top: 0; }
+.bulk-item { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.bulk-item select { font: inherit; font-size: 13px; color: var(--ink); background: var(--field); border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px 6px; }
+.bulk-item select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Estimate vs actual by item */
+.est-by-item { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+.by-item { min-width: 640px; }
+.by-item thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 6px 4px; border-bottom: 1px solid var(--line-strong); }
+.by-item thead th.num { text-align: right; }
+.by-item td { width: 15%; }
+.by-item td.used { width: 20%; white-space: nowrap; }
+.by-item .used-pct { display: inline-block; min-width: 52px; }
+.mini-meter { display: inline-block; width: 90px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; vertical-align: middle; margin-left: 8px; }
+.mini-meter i { display: block; height: 100%; background: var(--orange); }
+.mini-meter i.over { background: var(--neg); }
+.by-item td.neg, .by-item span.neg { color: var(--neg); }
+
 /* Toast */
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);

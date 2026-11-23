@@ -137,7 +137,7 @@ test('export skips blank rows, matches supplier names literally, rounds overhead
   assert.strictEqual(wb.getWorksheet(SHEETS.labour).getCell('A2').value, 'a');
   const m = wb.getWorksheet(SHEETS.materials);
   assert.strictEqual(m.getCell('A6').value, 'Lumber Co');
-  assert.ok(/^SUMPRODUCT\(/.test(m.getCell('H4').value.formula)); // company totals, not SUMIF
+  assert.ok(/^SUMPRODUCT\(/.test(m.getCell('I4').value.formula)); // company totals, not SUMIF
   assert.strictEqual(wb.getWorksheet(SHEETS.breakdown).getCell('B7').value.formula, 'ROUND(B6*$D$6,2)');
 });
 

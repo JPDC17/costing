@@ -18,6 +18,21 @@ const SHEETS = {
 
 function bold(cell) { cell.font = { bold: true }; }
 
+// The Estimate Item column: the estimate line's name (e.g. "Crew Cost"), with a
+// dropdown of the lines in Excel.
+const ITEM_HEADING = 'Estimate Item';
+const itemLabel = row => { const k = Calc.estItemOf(row); return k ? Calc.ESTIMATE_LINES.find(l => l.key === k).label : ''; };
+function itemDropdown(ws, col, first, last) {
+  const list = `"${Calc.ESTIMATE_LINES.map(l => l.label).join(',')}"`;
+  for (let r = first; r <= last; r++) {
+    ws.getCell(r, col).dataValidation = { type: 'list', allowBlank: true, formulae: [list], showErrorMessage: true, errorTitle: 'Estimate item', error: 'Pick one of the estimate items, or leave it blank.' };
+  }
+}
+// Sum of `amounts` on rows whose Estimate Item says `label` (any case, spaces ignored).
+function itemSum(itemRange, amountRange, label) {
+  return `SUMPRODUCT((TRIM(${itemRange}&"")="${label}")*${amountRange})`;
+}
+
 // Sum of `amounts` on rows whose Paid cell says Yes / Y / Paid / x / ✓ (any case,
 // spaces ignored): the same entries the app accepts as paid (Calc.PAID_WORDS).
 function paidSum(paidRange, amountRange) {
@@ -55,8 +70,8 @@ function writeQuoteSection(ws, startRow, title, rows) {
 
 function writeDatedSheet(wb, name, rows) {
   const ws = wb.addWorksheet(name);
-  ws.columns = [{ width: 27 }, { width: 18 }, { width: 40 }];
-  header(ws, 1, ['Date(s)', 'Amount', 'Description']);
+  ws.columns = [{ width: 27 }, { width: 18 }, { width: 40 }, { width: 18 }];
+  header(ws, 1, ['Date(s)', 'Amount', 'Description', ITEM_HEADING]);
   let r = 2;
   if (!rows.length) r++;
   for (const x of rows) {
@@ -64,13 +79,15 @@ function writeDatedSheet(wb, name, rows) {
     ws.getCell(r, 2).value = amount(x.amount);
     ws.getCell(r, 2).numFmt = MONEY;
     ws.getCell(r, 3).value = x.description || '';
+    ws.getCell(r, 4).value = itemLabel(x);
     r++;
   }
   const last = Math.max(r - 1, 2);
+  itemDropdown(ws, 4, 2, last);
   ws.getCell(r, 1).value = 'Total'; bold(ws.getCell(r, 1));
   ws.getCell(r, 2).value = { formula: `SUM(B2:B${last})`, result: Calc.sum(rows) };
   ws.getCell(r, 2).numFmt = MONEY; bold(ws.getCell(r, 2));
-  return `${q(name)}!B${r}`;
+  return { ref: `${q(name)}!B${r}`, items: `${q(name)}!D2:D${last}`, amounts: `${q(name)}!B2:B${last}` };
 }
 
 // Widen each column to fit its longest value (within limits), so names aren't cut off.
@@ -223,18 +240,19 @@ async function exportWorkbook(job, filePath, company) {
   const drawsPaidRef = `${q(SHEETS.draws)}!D${d + 1}`;
 
   // --- Labour / Equipment ---
-  const labourRef = writeDatedSheet(wb, SHEETS.labour, job.labour);
-  const equipRef = writeDatedSheet(wb, SHEETS.equipment, job.equipment);
+  const labourSheet = writeDatedSheet(wb, SHEETS.labour, job.labour);
+  const equipSheet = writeDatedSheet(wb, SHEETS.equipment, job.equipment);
+  const labourRef = labourSheet.ref, equipRef = equipSheet.ref;
 
   // --- Material and Supplier Invoices ---
   const wsM = wb.addWorksheet(SHEETS.materials);
-  wsM.columns = [{ width: 28 }, { width: 18 }, { width: 18 }, { width: 45 }, { width: 8 }, { width: 3 }, { width: 28 }, { width: 16 }];
+  wsM.columns = [{ width: 28 }, { width: 18 }, { width: 18 }, { width: 45 }, { width: 8 }, { width: 18 }, { width: 3 }, { width: 28 }, { width: 16 }];
   wsM.mergeCells('A1:C1');
   wsM.getCell('A1').value = 'Material and Supplier Invoices'; wsM.getCell('A1').font = { bold: true, size: 14 };
   wsM.mergeCells('A2:D2');
   wsM.getCell('A2').value = job.jobName || ''; bold(wsM.getCell('A2'));
-  header(wsM, 3, ['Name', 'Invoice Number', 'Amount', 'Notes', 'Paid']);
-  for (const [col, label] of [[7, 'Company Totals'], [8, 'Total']]) {
+  header(wsM, 3, ['Name', 'Invoice Number', 'Amount', 'Notes', 'Paid', ITEM_HEADING]);
+  for (const [col, label] of [[8, 'Company Totals'], [9, 'Total']]) {
     const c = wsM.getCell(3, col); c.value = label; bold(c); c.border = { bottom: { style: 'thin' } };
   }
   let r = 4;
@@ -246,9 +264,11 @@ async function exportWorkbook(job, filePath, company) {
     wsM.getCell(r, 4).value = m.notes || '';
     wsM.getCell(r, 5).value = Calc.isPaid(m) ? 'Yes' : '';
     wsM.getCell(r, 5).alignment = { horizontal: 'center' };
+    wsM.getCell(r, 6).value = itemLabel(m);
     r++;
   }
   const mLast = Math.max(r - 1, 4);
+  itemDropdown(wsM, 6, 4, mLast);
   wsM.getCell(r, 1).value = 'Total'; bold(wsM.getCell(r, 1));
   wsM.getCell(r, 3).value = { formula: `SUM(C4:C${mLast})`, result: t.materials };
   wsM.getCell(r, 3).numFmt = MONEY; bold(wsM.getCell(r, 3));
@@ -263,15 +283,51 @@ async function exportWorkbook(job, filePath, company) {
   const names = `$A$4:$A$${mLast}`, amounts = `$C$4:$C$${mLast}`;
   let s = 4;
   for (const sup of suppliers) {
-    wsM.getCell(s, 7).value = sup.supplier;
-    const match = sup.blank ? `${names}=""` : `${names}=G${s}`;
-    wsM.getCell(s, 8).value = { formula: `SUMPRODUCT((${match})*${amounts})`, result: sup.total };
-    wsM.getCell(s, 8).numFmt = MONEY;
+    wsM.getCell(s, 8).value = sup.supplier;
+    const match = sup.blank ? `${names}=""` : `${names}=H${s}`;
+    wsM.getCell(s, 9).value = { formula: `SUMPRODUCT((${match})*${amounts})`, result: sup.total };
+    wsM.getCell(s, 9).numFmt = MONEY;
     s++;
   }
-  wsM.getCell(s, 7).value = 'Total'; bold(wsM.getCell(s, 7));
-  wsM.getCell(s, 8).value = { formula: s > 4 ? `SUM(H4:H${s - 1})` : '0', result: t.materials };
-  wsM.getCell(s, 8).numFmt = MONEY; bold(wsM.getCell(s, 8));
+  wsM.getCell(s, 8).value = 'Total'; bold(wsM.getCell(s, 8));
+  wsM.getCell(s, 9).value = { formula: s > 4 ? `SUM(I4:I${s - 1})` : '0', result: t.materials };
+  wsM.getCell(s, 9).numFmt = MONEY; bold(wsM.getCell(s, 9));
+
+  // --- Estimate vs actual by item, under the Estimates table. Actual costs are the
+  // Labour, Equipment and invoice rows whose Estimate Item names that line.
+  if (nq) {
+    const byItem = Calc.estimateByItem(job);
+    let br = E.margin + 4;
+    const hdr = ['Estimate vs Actual by Item', 'Estimated', 'Actual to Date', 'Left in Estimate', 'Used'];
+    hdr.forEach((h, i) => { const c = wsE.getCell(br, i + 1); c.value = h; bold(c); c.border = { bottom: { style: 'thin' } }; });
+    br++;
+    const firstLine = br;
+    const sources = [[labourSheet.items, labourSheet.amounts], [equipSheet.items, equipSheet.amounts], [`${q(SHEETS.materials)}!F4:F${mLast}`, `${q(SHEETS.materials)}!C4:C${mLast}`]];
+    const put = (row, label, estFormula, estResult, actFormula, actResult, isBold) => {
+      wsE.getCell(row, 1).value = label; if (isBold) bold(wsE.getCell(row, 1));
+      const set = (col, formula, result, fmt = MONEY) => { const c = wsE.getCell(row, col); c.value = { formula, result }; c.numFmt = fmt; if (isBold) bold(c); };
+      if (estFormula) set(2, estFormula, estResult);
+      set(3, actFormula, actResult);
+      if (estFormula) {
+        set(4, `B${row}-C${row}`, Calc.round2(estResult - actResult));
+        set(5, `IF(B${row}=0,"",C${row}/B${row})`, estResult ? actResult / estResult : '', '0.0%');
+      }
+    };
+    byItem.lines.forEach((l, i) => {
+      put(br, l.label, `${tc}${E.line0 + i}`, l.estimated, sources.map(([items, amts]) => itemSum(items, amts, l.label)).join('+'), l.actual);
+      br++;
+    });
+    const lastLine = br - 1;
+    const bd = q(SHEETS.breakdown);
+    put(br, 'Not linked to an estimate item', null, 0, `${bd}!B6-SUM(C${firstLine}:C${lastLine})`, byItem.unlinked.actual); br++;
+    for (let c = 1; c <= 5; c++) wsE.getCell(br, c).border = { top: { style: 'thin' } };
+    put(br, 'Total before overhead', `${tc}${E.total}`, byItem.subtotal.estimated, `${bd}!B6`, byItem.subtotal.actual, true); br++;
+    put(br, 'Overhead', `${tc}${E.overhead}`, byItem.overhead.estimated, `${bd}!B7`, byItem.overhead.actual); br++;
+    put(br, 'Total with overhead', `B${br - 2}+B${br - 1}`, byItem.total.estimated, `${bd}!B9`, byItem.total.actual, true);
+    for (let c = 1; c <= 5; c++) wsE.getCell(br, c).border = { top: { style: 'thin' }, bottom: { style: 'double' } };
+    wsE.getCell(br + 2, 1).value = 'Pick each cost\'s estimate item in the Estimate Item column on the Labour, Equipment and Material and Supplier Invoices sheets.';
+    wsE.getCell(br + 2, 1).font = { italic: true, color: { argb: 'FF666666' } };
+  }
 
   // --- Total Breakdown ---
   const wsT = wb.addWorksheet(SHEETS.breakdown);
@@ -367,7 +423,7 @@ async function exportWorkbook(job, filePath, company) {
   const printHeader = company.name || job.jobName ? `&L&9&B${hf(company.name)}&R&9${hf(job.jobName)}` : '';
   finishSheet(wsQ, 2, false, printHeader);
   finishSheet(wsE, E.head, true, printHeader);
-  wsE.getColumn(1).width = 18;
+  wsE.getColumn(1).width = 30;
   for (let c = 2; c <= totalCol; c++) wsE.getColumn(c).width = 16;
   wsE.getRow(E.head).height = 32;
   wsE.views = [{ state: 'frozen', xSplit: 1, ySplit: E.head }];
@@ -454,6 +510,13 @@ function findRow(ws, label) {
   return -1;
 }
 
+// Store the estimate line's key (e.g. "Crew Cost" -> estCrew); rows without one get no estItem.
+function cleanItem(row) {
+  const k = Calc.estItemOf(row);
+  if (k) row.estItem = k; else delete row.estItem;
+  return row;
+}
+
 async function importWorkbook(filePath) {
   const wb = new ExcelJS.Workbook();
   try {
@@ -485,9 +548,11 @@ async function importWorkbook(filePath) {
   const wsE = get(SHEETS.estimates);
   if (wsE && job.quotes.length) {
     const keyOf = Object.fromEntries([...Calc.ESTIMATE_LINES.map(l => [l.label.toLowerCase(), l.key]), ['overhead', 'estOverhead']]);
+    const seen = new Set(); // only the estimate table at the top, not the comparison under it
     for (let r = 1; r <= wsE.rowCount; r++) {
       const key = keyOf[text(wsE.getRow(r).getCell(1)).toLowerCase()];
-      if (!key) continue;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
       job.quotes.forEach((x, i) => {
         const v = cellValue(wsE.getRow(r).getCell(i + 2));
         if (v !== null && String(v).trim() !== '') x[key] = typeof v === 'number' ? Calc.round2(v) : Calc.num(v);
@@ -503,17 +568,19 @@ async function importWorkbook(filePath) {
   }
   for (const [key, name] of [['labour', SHEETS.labour], ['equipment', SHEETS.equipment]]) {
     const ws = get(name);
-    if (ws) job[key] = readRows(ws, 2, [['date', 1], ['amount', 2, 'money'], ['description', 3]]);
+    if (!ws) continue;
+    const c = Object.fromEntries(columns(ws, 1, { estItem: ITEM_HEADING }, {}));
+    job[key] = readRows(ws, 2, [['date', 1], ['amount', 2, 'money'], ['description', 3], ['estItem', c.estItem]]).map(cleanItem);
   }
   const wsM = get(SHEETS.materials);
   if (wsM) {
     const hdr = findRow(wsM, 'Name');
     const c = hdr > 0
-      ? Object.fromEntries(columns(wsM, hdr, { supplier: 'Name', invoiceNumber: 'Invoice Number', amount: 'Amount', notes: 'Notes', paid: 'Paid' },
+      ? Object.fromEntries(columns(wsM, hdr, { supplier: 'Name', invoiceNumber: 'Invoice Number', amount: 'Amount', notes: 'Notes', paid: 'Paid', estItem: ITEM_HEADING },
         { supplier: 1, invoiceNumber: 2, amount: 3, notes: 4 }))
       : { supplier: 1, invoiceNumber: 2, amount: 3, notes: 4 };
     job.materials = readRows(wsM, hdr > 0 ? hdr + 1 : 4,
-      [['supplier', c.supplier], ['invoiceNumber', c.invoiceNumber], ['amount', c.amount, 'money'], ['notes', c.notes], ['paid', c.paid, 'paid']]);
+      [['supplier', c.supplier], ['invoiceNumber', c.invoiceNumber], ['amount', c.amount, 'money'], ['notes', c.notes], ['paid', c.paid, 'paid'], ['estItem', c.estItem]]).map(cleanItem);
   }
   const wsT = get(SHEETS.breakdown);
   if (wsT) {
