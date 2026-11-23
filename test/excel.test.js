@@ -10,6 +10,7 @@ const Calc = require('../src/calc');
 const job = {
   ...Calc.newJob(),
   jobName: '12 Main St Reno',
+  jobNumber: 'JC-12', client: 'Smith & Sons', address: '12 Main St', notes: 'Line one\nLine two',
   overheadPercent: 10,
   quotes: [{ description: 'Quote 1 - Framing', amount: 40000, notes: 'Signed' }, { description: 'Quote 2 - Roofing', amount: 15000, notes: '' }],
   changeOrders: [{ description: 'CO-1 Extra window', amount: 1800, notes: 'Approved by email' }],
@@ -58,6 +59,7 @@ test('export then import round-trips the job', async () => {
   await exportWorkbook(job, file);
   const back = await importWorkbook(file);
   assert.strictEqual(back.jobName, job.jobName);
+  for (const k of ['jobNumber', 'client', 'address', 'notes']) assert.strictEqual(back[k], job[k], k);
   assert.strictEqual(back.overheadPercent, 10);
   assert.deepStrictEqual(back.quotes, job.quotes);
   assert.deepStrictEqual(back.changeOrders, job.changeOrders);

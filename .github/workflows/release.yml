@@ -79,6 +79,10 @@ jobs:
           node scripts/bundle.js
           npx electron-builder --win portable nsis --x64 --publish never
 
+      - name: Build the sample job
+        if: steps.version.outputs.publish == 'true'
+        run: node scripts/make-sample.js
+
       - name: Write latest.json
         if: steps.version.outputs.publish == 'true'
         shell: bash
@@ -90,6 +94,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" dist/JobCosting-Portable.exe dist/JobCosting-Setup.exe latest.json \
+          gh release create "${{ steps.version.outputs.tag }}" dist/JobCosting-Portable.exe dist/JobCosting-Setup.exe latest.json examples/Sample-Job.xlsx examples/Sample-Job.jobcost \
             --target "$GITHUB_SHA" --title "Job Costing ${{ steps.version.outputs.tag }}" \
             --notes-file RELEASE_NOTES.md --latest

@@ -62,6 +62,21 @@ Both update themselves from inside the app, and both use the same job files and 
 > The exe isn't code-signed, so the first time you run it Windows SmartScreen may warn
 > about an unknown publisher. Click **More info → Run anyway**.
 
+## Try it with a sample job
+
+Download a made-up job that uses every part of the app: estimates on each quote, change
+orders, progress draws with paid ticks and 10% holdback, labour, equipment and invoices
+linked to estimate items (Trucking runs over its estimate), and the profit forecast.
+
+- [**Sample-Job.xlsx**](https://github.com/JPDC17/costing/releases/latest/download/Sample-Job.xlsx):
+  open it in Excel to see the export (every total is a live formula), or bring it into
+  the app with **Import Excel**.
+- [**Sample-Job.jobcost**](https://github.com/JPDC17/costing/releases/latest/download/Sample-Job.jobcost):
+  open it in the app with **Open job…**.
+
+Both are also in the [`examples`](examples) folder. The sample is rebuilt for every
+release by [`scripts/make-sample.js`](scripts/make-sample.js).
+
 ## Usage
 
 | Section | What goes in it |

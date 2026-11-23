@@ -14,9 +14,13 @@ const SHEETS = {
   equipment: 'Equipment',
   materials: 'Material and Supplier Invoices',
   breakdown: 'Total Breakdown',
+  details: 'Job Details',
 };
 
 function bold(cell) { cell.font = { bold: true }; }
+
+// Job details, on their own sheet so they come back when the workbook is imported.
+const JOB_DETAILS = [['jobNumber', 'Job Number'], ['client', 'Client'], ['address', 'Site Address'], ['notes', 'Notes']];
 
 // The Estimate Item column: the estimate line's name (e.g. "Crew Cost"), with a
 // dropdown of the lines in Excel.
@@ -139,6 +143,7 @@ async function exportWorkbook(job, filePath, company) {
   wsQ.mergeCells('A1:C1');
   wsQ.getCell('A1').value = job.jobName || 'Job Name';
   wsQ.getCell('A1').font = { bold: true, size: 14 };
+
   const quotesTotalRow = writeQuoteSection(wsQ, 2, 'Approved Quotes', job.quotes);
   const coStart = quotesTotalRow + 2;
   const coTotalRow = writeQuoteSection(wsQ, coStart, 'Change Orders', job.changeOrders);
@@ -449,14 +454,27 @@ async function exportWorkbook(job, filePath, company) {
   finishSheet(wsQ, 2, false, printHeader);
   finishSheet(wsE, E.head, true, printHeader);
   wsE.getColumn(1).width = 30;
-  for (let c = 2; c <= totalCol; c++) wsE.getColumn(c).width = 16;
-  wsE.getRow(E.head).height = 32;
+  for (let c = 2; c <= totalCol; c++) wsE.getColumn(c).width = 18;
+  // tall enough for a quote name wrapped onto three lines
+  const longest = Math.max(0, ...job.quotes.map(x => String(x.description || '').length));
+  wsE.getRow(E.head).height = Math.min(4, Math.max(1, Math.ceil(longest / 10))) * 15 + 4;
   wsE.views = [{ state: 'frozen', xSplit: 1, ySplit: E.head }];
   finishSheet(wsD, 1, true, printHeader);
   finishSheet(wb.getWorksheet(SHEETS.labour), 1, false, printHeader);
   finishSheet(wb.getWorksheet(SHEETS.equipment), 1, false, printHeader);
   finishSheet(wsM, 3, true, printHeader);
   finishSheet(wsT, 0, false, printHeader);
+  const wsJ = wb.addWorksheet(SHEETS.details);
+  wsJ.getCell('A1').value = 'Job Details'; wsJ.getCell('A1').font = { bold: true, size: 14 };
+  wsJ.getCell('A2').value = 'Job Name'; bold(wsJ.getCell('A2'));
+  wsJ.getCell('B2').value = { formula: `""&${q(SHEETS.quotes)}!A1`, result: job.jobName || '' };
+  JOB_DETAILS.forEach(([key, label], i) => {
+    const l = wsJ.getCell(3 + i, 1); l.value = label; bold(l); l.alignment = { vertical: 'top' };
+    const v = wsJ.getCell(3 + i, 2); v.value = String(job[key] || ''); v.alignment = { wrapText: true, vertical: 'top' };
+  });
+  wsJ.getColumn(1).width = 16; wsJ.getColumn(2).width = 80;
+  wsJ.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  wsJ.headerFooter = { oddHeader: printHeader, oddFooter: '&L&8&A&R&8Page &P of &N' };
   if (company.name) {
     wsT.getCell('F1').value = company.name;
     wsT.getCell('F1').font = { bold: true, size: 12 };
@@ -560,6 +578,7 @@ async function importWorkbook(filePath) {
   if (wsQ) {
     const name = text(wsQ.getCell('A1'));
     if (name && name !== 'Job Name') job.jobName = name;
+
     const qRow = findRow(wsQ, 'Approved Quotes');
     const quoteMap = [['description', 1], ['amount', 2, 'money'], ['notes', 3]];
     if (qRow > 0) job.quotes = readRows(wsQ, qRow + 1, quoteMap, ['Change Orders']);
@@ -583,6 +602,14 @@ async function importWorkbook(filePath) {
         const v = cellValue(wsE.getRow(r).getCell(i + 2));
         if (v !== null && String(v).trim() !== '') x[key] = typeof v === 'number' ? Calc.round2(v) : Calc.num(v);
       });
+    }
+  }
+  const wsJ = get(SHEETS.details);
+  if (wsJ) {
+    for (let r = 1; r <= Math.min(wsJ.rowCount, 20); r++) {
+      const label = text(wsJ.getRow(r).getCell(1)).toLowerCase();
+      const d = JOB_DETAILS.find(([, l]) => l.toLowerCase() === label);
+      if (d) job[d[0]] = String(cellValue(wsJ.getRow(r).getCell(2)) ?? '').replace(/\r\n/g, '\n');
     }
   }
   const wsD = get(SHEETS.draws);
