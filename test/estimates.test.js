@@ -125,11 +125,14 @@ test('by item: linked costs are compared with each estimate line; the rest is sh
   const r = Calc.estimateByItem(j);
   const get = k => r.lines.find(l => l.key === k);
   const e = Calc.estimates(j);
-  assert.strictEqual(get('estCrew').estimated, e.total.estCrew);
-  assert.strictEqual(get('estCrew').actual, 12000);
-  assert.strictEqual(get('estCrew').left, Calc.round2(e.total.estCrew - 12000));
+  // Crew Cost and Grading Labour are one item, Labour: both estimates, both kinds of cost
+  assert.deepStrictEqual(r.lines.map(l => l.key), ['labour', 'estMaterial', 'estSub', 'estStone', 'estTrucking']);
+  assert.strictEqual(get('labour').label, 'Labour (Crew Cost + Grading Labour)');
+  assert.strictEqual(get('labour').estimated, Calc.round2(e.total.estCrew + e.total.estGrading));
+  assert.strictEqual(get('labour').actual, 15000); // the rows saved as estCrew and estGrading
+  assert.strictEqual(get('labour').count, 2);
+  assert.strictEqual(get('labour').left, Calc.round2(e.total.estCrew + e.total.estGrading - 15000));
   assert.strictEqual(get('estMaterial').actual, 20000.25);
-  assert.strictEqual(get('estGrading').actual, 3000);
   assert.strictEqual(get('estTrucking').actual, 2500);
   assert.strictEqual(get('estSub').actual, 0);
   assert.strictEqual(r.unlinked.actual, 1499); // the unlinked labour row and the unknown item
@@ -146,7 +149,10 @@ test('by item: linked costs are compared with each estimate line; the rest is sh
 
 test('by item: picking an estimate item alone does not make a row count as filled in', () => {
   assert.strictEqual(Calc.isBlankRow({ id: 'r1', date: '', description: '', amount: '', estItem: 'estCrew' }), true);
-  assert.strictEqual(Calc.estItemOf({ estItem: '  GRADING labour ' }), 'estGrading');
+  assert.strictEqual(Calc.estItemOf({ estItem: '  GRADING labour ' }), 'labour');
+  assert.strictEqual(Calc.estItemOf({ estItem: 'Labour' }), 'labour');
+  assert.strictEqual(Calc.estItemOf({ estItem: 'estCrew' }), 'labour');
+  assert.strictEqual(Calc.estItemOf({ estItem: 'Stone' }), 'estStone');
   assert.strictEqual(Calc.estItemOf({ estItem: '' }), '');
   assert.strictEqual(Calc.estItemOf({}), '');
 });
@@ -154,7 +160,7 @@ test('by item: picking an estimate item alone does not make a row count as fille
 test('Excel: Estimate Item columns, dropdowns, by-item formulas, and import back', async () => {
   const j = {
     ...job,
-    labour: [{ date: 'Wk 1', description: 'Crew', amount: 12000, estItem: 'estCrew' }, { date: 'Wk 2', description: 'Grader', amount: 3000, estItem: 'estGrading' }, { date: 'Wk 3', description: 'Misc', amount: 500 }],
+    labour: [{ date: 'Wk 1', description: 'Crew', amount: 12000, estItem: 'labour' }, { date: 'Wk 2', description: 'Grader', amount: 3000, estItem: 'estGrading' }, { date: 'Wk 3', description: 'Misc', amount: 500 }],
     equipment: [{ date: 'Jan', description: 'Trucks', amount: 2500, estItem: 'estTrucking' }],
     materials: [{ supplier: 'A', invoiceNumber: '1', amount: 20000.25, notes: '', paid: false, estItem: 'estMaterial' }],
   };
@@ -164,7 +170,8 @@ test('Excel: Estimate Item columns, dropdowns, by-item formulas, and import back
   await wb.xlsx.readFile(file);
   const lab = wb.getWorksheet(SHEETS.labour);
   assert.strictEqual(lab.getCell('D1').value, 'Estimate Item');
-  assert.strictEqual(lab.getCell('D2').value, 'Crew Cost');
+  assert.strictEqual(lab.getCell('D2').value, 'Labour');
+  assert.strictEqual(lab.getCell('D3').value, 'Labour'); // saved as Grading Labour before they were combined
   assert.strictEqual(lab.getCell('D4').value, '');
   assert.strictEqual(lab.getCell('D2').dataValidation.type, 'list');
   const mat = wb.getWorksheet(SHEETS.materials);
@@ -173,14 +180,20 @@ test('Excel: Estimate Item columns, dropdowns, by-item formulas, and import back
   assert.strictEqual(mat.getCell('H3').value, 'Company Totals');
   const ws = wb.getWorksheet(SHEETS.estimates);
   const rowsOf = label => [...Array(ws.rowCount).keys()].map(i => i + 1).filter(r => ws.getCell(r, 1).value === label);
-  const crew = rowsOf('Crew Cost')[1]; // second "Crew Cost" row is in the comparison
+  const lab2 = rowsOf('Labour (Crew Cost + Grading Labour)')[0];
   const r = Calc.estimateByItem(j);
-  assert.strictEqual(ws.getCell(crew, 3).value.result, 12000);
-  assert.match(ws.getCell(crew, 3).value.formula, /SUMPRODUCT\(\(TRIM\('Labour'!D2:D4&""\)="Crew Cost"\)\*'Labour'!B2:B4\)/);
+  assert.strictEqual(ws.getCell(lab2, 3).value.result, 15000);
+  const f = ws.getCell(lab2, 3).value.formula; // any name the app accepts for Labour counts
+  assert.match(f, /^SUMPRODUCT\(ISNUMBER\(MATCH\(TRIM\('Labour'!D2:D4&""\),\{[^}]*\},0\)\)\*'Labour'!B2:B4\)/);
+  for (const n of ['"labour"', '"crew cost"', '"grading labour"']) assert.ok(f.includes(n), n);
+  // its estimate is Crew Cost + Grading Labour from the Total column
+  const tcol = ws.getCell(lab2, 2).value.formula;
+  assert.match(tcol, /^E3\+E6$/);
+  assert.strictEqual(ws.getCell(lab2, 2).value.result, Calc.round2(Calc.estimates(j).total.estCrew + Calc.estimates(j).total.estGrading));
   assert.strictEqual(ws.getCell(rowsOf('Not linked to an estimate item')[0], 3).value.result, r.unlinked.actual);
   assert.strictEqual(ws.getCell(rowsOf('Total with overhead')[0], 3).value.result, Calc.totals(j).totalCosts);
   const back = await importWorkbook(file);
-  assert.deepStrictEqual(back.labour.map(x => x.estItem), ['estCrew', 'estGrading', undefined]);
+  assert.deepStrictEqual(back.labour.map(x => x.estItem), ['labour', 'labour', undefined]);
   assert.deepStrictEqual(back.equipment.map(x => x.estItem), ['estTrucking']);
   assert.deepStrictEqual(back.materials.map(x => x.estItem), ['estMaterial']);
   // the comparison rows under the estimate table aren't read back as estimates
@@ -196,5 +209,5 @@ test('Excel: an Estimate Item typed by hand (any case) is understood on import',
   wb.getWorksheet(SHEETS.labour).getCell('D2').value = '  grading LABOUR ';
   await wb.xlsx.writeFile(file);
   const back = await importWorkbook(file);
-  assert.strictEqual(back.labour[0].estItem, 'estGrading');
+  assert.strictEqual(back.labour[0].estItem, 'labour');
 });

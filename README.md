@@ -112,8 +112,9 @@ Estimate Used     = actual costs before overhead ÷ estimated Total Cost
 
 Only quotes with an estimate are counted in the estimate totals.
 
-Each labour, equipment and invoice line can be linked to an estimate item (Crew Cost,
-Material, Sub Cost, Grading Labour, Stone or Trucking) in its **Estimate Item** column.
+Each labour, equipment and invoice line can be linked to an estimate item (Labour,
+Material, Sub Cost, Stone or Trucking) in its **Estimate Item** column. Labour is compared
+with the estimate's Crew Cost + Grading Labour.
 The app then compares each item's estimate with the actual costs linked to it:
 
 ```

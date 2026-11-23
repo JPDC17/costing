@@ -207,16 +207,33 @@
     };
   }
 
-  // Which estimate line (Crew Cost, Material, ...) a labour, equipment or invoice row
-  // counts against: its estItem holds the line's key. Also accepts the label as typed
-  // in Excel ("crew cost", any case, spaces ignored). '' = not linked.
+  // The items a labour, equipment or invoice row can be linked to, and the estimate
+  // lines each one is compared with. Crew Cost and Grading Labour are both labour, so
+  // they're one item: Labour.
   const COST_KEYS = ['labour', 'equipment', 'materials'];
+  const COST_ITEMS = [
+    { key: 'labour', label: 'Labour', lines: ['estCrew', 'estGrading'], detail: 'Crew Cost + Grading Labour' },
+    { key: 'estMaterial', label: 'Material', lines: ['estMaterial'] },
+    { key: 'estSub', label: 'Sub Cost', lines: ['estSub'] },
+    { key: 'estStone', label: 'Stone', lines: ['estStone'] },
+    { key: 'estTrucking', label: 'Trucking', lines: ['estTrucking'] },
+  ];
+  // Other names accepted for an item: its estimate lines' keys and labels (so files
+  // saved when Crew Cost and Grading Labour were separate still count as Labour).
+  const ITEM_NAMES = new Map();
+  for (const it of COST_ITEMS) {
+    for (const n of [it.key, it.label, ...it.lines, ...it.lines.map(k => ESTIMATE_LINES.find(l => l.key === k).label)]) ITEM_NAMES.set(n.toLowerCase(), it.key);
+  }
+  ITEM_NAMES.set('labor', 'labour');
+  // Every name each item answers to (lower case), for the Excel formulas.
+  for (const it of COST_ITEMS) it.names = [...ITEM_NAMES].filter(([, k]) => k === it.key).map(([n]) => n);
+  // The item a row is linked to: its estItem, or the name typed in Excel (any case,
+  // spaces ignored). '' = not linked.
   function estItemOf(row) {
     const v = String((row && row.estItem) ?? '').trim().toLowerCase();
-    if (!v) return '';
-    const l = ESTIMATE_LINES.find(x => x.key.toLowerCase() === v || x.label.toLowerCase() === v);
-    return l ? l.key : '';
+    return (v && ITEM_NAMES.get(v)) || '';
   }
+  const itemLabel = key => { const it = COST_ITEMS.find(i => i.key === key); return it ? it.label : ''; };
 
   // Estimate vs actual for each estimate line. Estimated = the line's total over the
   // quotes that have an estimate; actual = the cost rows linked to that line. Costs not
@@ -226,8 +243,8 @@
     const j = normalizeJob(job);
     const t = totals(j);
     const e = estimates(j);
-    const actual = Object.fromEntries(ESTIMATE_LINES.map(l => [l.key, 0]));
-    const counts = Object.fromEntries(ESTIMATE_LINES.map(l => [l.key, 0]));
+    const actual = Object.fromEntries(COST_ITEMS.map(l => [l.key, 0]));
+    const counts = Object.fromEntries(COST_ITEMS.map(l => [l.key, 0]));
     let unlinkedCount = 0;
     for (const k of COST_KEYS) {
       for (const r of j[k]) {
@@ -241,7 +258,10 @@
       left: round2(estimated - act),
       usedPercent: estimated ? act / estimated * 100 : 0,
     });
-    const lines = ESTIMATE_LINES.map(l => row(l.key, l.label, e.total[l.key], round2(actual[l.key]), counts[l.key]));
+    const lines = COST_ITEMS.map(it => ({
+      ...row(it.key, it.detail ? `${it.label} (${it.detail})` : it.label, round2(it.lines.reduce((a, k) => a + e.total[k], 0)), round2(actual[it.key]), counts[it.key]),
+      name: it.label, estimateLines: it.lines,
+    }));
     const linked = round2(lines.reduce((a, l) => a + l.actual, 0));
     const unlinked = row('', 'Not linked to an estimate item', 0, round2(t.subtotal - linked), unlinkedCount);
     const subtotal = row('subtotal', 'Total before overhead', e.total.totalCost, t.subtotal, 0);
@@ -303,5 +323,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, COST_KEYS, hasEstimate, estimateOf, estimates, estItemOf, estimateByItem, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, COST_KEYS, COST_ITEMS, hasEstimate, estimateOf, estimates, estItemOf, itemLabel, estimateByItem, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

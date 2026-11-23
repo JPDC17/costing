@@ -21,16 +21,18 @@ function bold(cell) { cell.font = { bold: true }; }
 // The Estimate Item column: the estimate line's name (e.g. "Crew Cost"), with a
 // dropdown of the lines in Excel.
 const ITEM_HEADING = 'Estimate Item';
-const itemLabel = row => { const k = Calc.estItemOf(row); return k ? Calc.ESTIMATE_LINES.find(l => l.key === k).label : ''; };
+const itemLabel = row => Calc.itemLabel(Calc.estItemOf(row));
 function itemDropdown(ws, col, first, last) {
-  const list = `"${Calc.ESTIMATE_LINES.map(l => l.label).join(',')}"`;
+  const list = `"${Calc.COST_ITEMS.map(l => l.label).join(',')}"`;
   for (let r = first; r <= last; r++) {
     ws.getCell(r, col).dataValidation = { type: 'list', allowBlank: true, formulae: [list], showErrorMessage: true, errorTitle: 'Estimate item', error: 'Pick one of the estimate items, or leave it blank.' };
   }
 }
-// Sum of `amounts` on rows whose Estimate Item says `label` (any case, spaces ignored).
-function itemSum(itemRange, amountRange, label) {
-  return `SUMPRODUCT((TRIM(${itemRange}&"")="${label}")*${amountRange})`;
+// Sum of `amounts` on rows whose Estimate Item names `item` (any of the names the app
+// accepts for it, e.g. Labour, Crew Cost or Grading Labour; any case, spaces ignored).
+function itemSum(itemRange, amountRange, item) {
+  const names = item.names.map(n => `"${n}"`).join(',');
+  return `SUMPRODUCT(ISNUMBER(MATCH(TRIM(${itemRange}&""),{${names}},0))*${amountRange})`;
 }
 
 // Sum of `amounts` on rows whose Paid cell says Yes / Y / Paid / x / ✓ (any case,
@@ -313,8 +315,10 @@ async function exportWorkbook(job, filePath, company) {
         set(5, `IF(B${row}=0,"",C${row}/B${row})`, estResult ? actResult / estResult : '', '0.0%');
       }
     };
-    byItem.lines.forEach((l, i) => {
-      put(br, l.label, `${tc}${E.line0 + i}`, l.estimated, sources.map(([items, amts]) => itemSum(items, amts, l.label)).join('+'), l.actual);
+    byItem.lines.forEach(l => {
+      // Labour's estimate is Crew Cost + Grading Labour.
+      const estCells = l.estimateLines.map(k => `${tc}${E.line0 + Calc.ESTIMATE_LINES.findIndex(x => x.key === k)}`).join('+');
+      put(br, l.label, estCells, l.estimated, sources.map(([items, amts]) => itemSum(items, amts, Calc.COST_ITEMS.find(it => it.key === l.key))).join('+'), l.actual);
       br++;
     });
     const lastLine = br - 1;

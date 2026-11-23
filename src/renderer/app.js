@@ -205,7 +205,7 @@ function renderTable(key) {
 function itemSelect(value, title) {
   const sel = el('select', { 'aria-label': 'Estimate item', title }, [
     el('option', { value: '', text: '—' }),
-    ...Calc.ESTIMATE_LINES.map(l => el('option', { value: l.key, text: l.label })),
+    ...Calc.COST_ITEMS.map(l => el('option', { value: l.key, text: l.label, title: l.detail })),
   ]);
   sel.value = value || '';
   sel.classList.toggle('unset', !sel.value);
@@ -217,13 +217,13 @@ function bulkItemPicker(key) {
   const sel = el('select', { 'aria-label': 'Set the estimate item of every row' }, [
     el('option', { value: '*', text: 'Choose…' }),
     el('option', { value: '', text: '— (not linked)' }),
-    ...Calc.ESTIMATE_LINES.map(l => el('option', { value: l.key, text: l.label })),
+    ...Calc.COST_ITEMS.map(l => el('option', { value: l.key, text: l.detail ? `${l.label} (${l.detail})` : l.label })),
   ]);
   sel.addEventListener('change', () => {
     if (sel.value === '*') return;
     const rows = state.job[key];
     const before = rows.map(r => r.estItem);
-    const label = sel.value ? Calc.ESTIMATE_LINES.find(l => l.key === sel.value).label : 'not linked';
+    const label = sel.value ? Calc.itemLabel(sel.value) : 'not linked';
     for (const r of rows) r.estItem = sel.value;
     markDirty();
     renderTable(key);
@@ -1073,7 +1073,7 @@ function buildReport() {
 
   // --- Detail tables
   // The Estimate item column is only added to a cost table when some of its lines are linked.
-  const itemName = x => { const k = Calc.estItemOf(x); return k ? Calc.ESTIMATE_LINES.find(l => l.key === k).label : ''; };
+  const itemName = x => Calc.itemLabel(Calc.estItemOf(x));
   const withItem = (key, cols) => (j[key].some(x => !Calc.isBlankRow(x) && Calc.estItemOf(x))
     ? [...cols.slice(0, -1), { key: 'estItem', label: 'Estimate item', item: true, w: '15%' }, cols[cols.length - 1]]
     : cols);
