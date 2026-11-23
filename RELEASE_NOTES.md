@@ -1,1 +1,1 @@
-Excel exports now include the job details (job number, client, site address and notes) on a Job Details sheet, so they come back when you import the workbook. A sample job showing every part of the app can now be downloaded from the Releases page.
+Fixes the PDF report cutting off the last digit of amounts at the right edge of the page.
