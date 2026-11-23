@@ -195,8 +195,9 @@ test('paid ticks: written as Yes, summed by formula, read back', async () => {
   const d = wb.getWorksheet(SHEETS.draws);
   assert.deepStrictEqual([d.getCell('E1').value, d.getCell('E2').value, d.getCell('E3').value], ['Paid', 'Yes', '']);
   assert.match(d.getCell('D5').value.formula, /^SUMPRODUCT\(ISNUMBER\(MATCH\(TRIM\(E2:E3&""\)/);
-  assert.strictEqual(d.getCell('D5').value.result, 1000);
-  assert.strictEqual(d.getCell('D6').value.result, 250.5);
+  // a new job holds back 10%, so paid and outstanding are net of holdback
+  assert.strictEqual(d.getCell('D5').value.result, 900);
+  assert.strictEqual(d.getCell('D6').value.result, 225.45);
   const back = await importWorkbook(file);
   assert.deepStrictEqual(back.draws.map(x => x.paid), [true, false]);
   assert.deepStrictEqual(back.materials.map(x => x.paid), [true, false]);
@@ -249,4 +250,34 @@ test('without company details there is no logo and no company cell', async () =>
   const tb = wb.getWorksheet(SHEETS.breakdown);
   assert.strictEqual(tb.getImages().length, 0);
   assert.strictEqual(tb.getCell('F1').value, null);
+});
+
+test('holdback: settings on the Progress Draws sheet, per-draw holdback and net, read back', async () => {
+  const file = tmp('hb.xlsx');
+  const j = { ...Calc.newJob(), holdbackPercent: 7.5, holdbackReceived: 120, holdbackDue: 'Mar 2027',
+    draws: [{ drawNumber: '1', amount: 1000.1, paid: true }, { drawNumber: '2', amount: 2000 }] };
+  await exportWorkbook(j, file);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const d = wb.getWorksheet(SHEETS.draws);
+  assert.deepStrictEqual([d.getCell('J2').value, d.getCell('K2').value, d.getCell('K3').value, d.getCell('K4').value], ['Holdback %', 0.075, 120, 'Mar 2027']);
+  assert.strictEqual(d.getCell('G2').value.formula, 'ROUND(D2*$K$2,2)');
+  assert.strictEqual(d.getCell('G2').value.result, 75.01);
+  assert.strictEqual(d.getCell('H2').value.result, 925.09);
+  const t = Calc.totals(j);
+  assert.strictEqual(d.getCell('D5').value.result, t.drawsPaid); // paid, net of holdback
+  assert.strictEqual(d.getCell('D8').value.result, t.holdbackOwed);
+  const back = await importWorkbook(file);
+  assert.deepStrictEqual([back.holdbackPercent, back.holdbackReceived, back.holdbackDue], [7.5, 120, 'Mar 2027']);
+});
+
+test('holdback: a workbook without holdback settings (template, older exports) imports with none', async () => {
+  const file = tmp('nohb.xlsx');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(SHEETS.draws);
+  ws.getCell('A1').value = 'Draw #'; ws.getCell('D1').value = 'Amount'; ws.getCell('A2').value = 1; ws.getCell('D2').value = 500;
+  await wb.xlsx.writeFile(file);
+  const back = await importWorkbook(file);
+  assert.strictEqual(back.holdbackPercent, 0);
+  assert.strictEqual(Calc.totals(back).drawsOutstanding, 500);
 });

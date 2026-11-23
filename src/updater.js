@@ -1,4 +1,4 @@
-// In-app updates for the portable Windows exe.
+// In-app updates for the portable Windows exe and the installed app.
 //
 // A small file, latest.json, sits next to the exe on GitHub:
 //   { "version": "1.2.0", "url": "https://raw.githubusercontent.com/.../JobCosting-Portable.exe",
@@ -38,7 +38,16 @@ function validateManifest(m, extraPrefixes = []) {
   const sha256 = String(m.sha256 || '').toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('The update information has no valid checksum.');
   const notes = typeof m.notes === 'string' ? m.notes.slice(0, 2000) : '';
-  return { version, url, size, sha256, notes, date: typeof m.date === 'string' ? m.date.slice(0, 40) : '' };
+  // The installer (for installed copies), when the release has one. Anything wrong with
+  // it only turns installer updates off; the portable update still works.
+  let setup = null;
+  const setupUrl = String(m.setupUrl || '');
+  const setupSize = Number(m.setupSize);
+  const setupSha = String(m.setupSha256 || '').toLowerCase();
+  if ([...TRUSTED_PREFIXES, ...extraPrefixes].some(p => setupUrl.startsWith(p))
+    && Number.isInteger(setupSize) && setupSize >= 1024 * 1024 && setupSize <= 500 * 1024 * 1024
+    && /^[0-9a-f]{64}$/.test(setupSha)) setup = { url: setupUrl, size: setupSize, sha256: setupSha };
+  return { version, url, size, sha256, notes, date: typeof m.date === 'string' ? m.date.slice(0, 40) : '', setup };
 }
 
 // The PowerShell commands that swap the exe once the app has closed. They copy the new
@@ -93,16 +102,45 @@ function swapCommand(newExe, target) {
   return Buffer.from(text, 'utf16le').toString('base64');
 }
 
-// Starts the swap as its own hidden PowerShell process and exits 0 once it's running.
-// Start-Process gives the swap a normal (hidden) console, and it isn't tied to the app,
-// so it keeps going after the app closes.
-function launchCommand(newExe, target) {
+// Starts an encoded command as its own hidden PowerShell process and exits 0 once it's
+// running. Start-Process gives it a normal (hidden) console, and it isn't tied to the
+// app, so it keeps going after the app closes.
+function launchEncoded(encoded) {
   const text = [
     "$ErrorActionPreference = 'Stop'",
-    `$p = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${swapCommand(newExe, target)}'`,
+    `$p = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${encoded}'`,
     'if ($p -and $p.Id) { exit 0 } else { exit 1 }',
   ].join('\n');
   return Buffer.from(text, 'utf16le').toString('base64');
 }
 
-module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, psQuote, swapCommand, launchCommand };
+function launchCommand(newExe, target) {
+  return launchEncoded(swapCommand(newExe, target));
+}
+
+// For the installed app: wait for the app (process id $AppPid) to close, then run the new
+// installer silently. It replaces the installed files and starts the app again
+// (--force-run). Logged to the same file as the portable swap.
+const POWERSHELL_INSTALL = String.raw`$ErrorActionPreference = 'Stop'
+$log = Join-Path $env:TEMP 'JobCosting-update.log'
+function Write-Log([string]$m) { Add-Content -LiteralPath $log -Encoding UTF8 -Value ((Get-Date -Format s) + '  ' + $m) }
+try {
+  Write-Log ('Installing ' + $Setup)
+  Wait-Process -Id $AppPid -Timeout 120 -ErrorAction SilentlyContinue
+  $p = Start-Process -FilePath $Setup -ArgumentList '/S','--force-run' -PassThru -Wait
+  Write-Log ('Installer finished with code ' + $p.ExitCode)
+} catch {
+  Write-Log ('Could not run the installer: ' + $_.Exception.Message)
+}
+`;
+
+function installCommand(setupExe, appPid) {
+  const text = `$Setup = ${psQuote(setupExe)}\n$AppPid = ${Math.trunc(Number(appPid)) || 0}\n${POWERSHELL_INSTALL}`;
+  return Buffer.from(text, 'utf16le').toString('base64');
+}
+
+function launchInstallCommand(setupExe, appPid) {
+  return launchEncoded(installCommand(setupExe, appPid));
+}
+
+module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, POWERSHELL_INSTALL, psQuote, swapCommand, launchCommand, installCommand, launchInstallCommand };

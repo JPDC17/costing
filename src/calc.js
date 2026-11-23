@@ -5,6 +5,7 @@
   else root.Calc = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const DEFAULT_OVERHEAD_PERCENT = 12;
+  const DEFAULT_HOLDBACK_PERCENT = 10;
 
   function num(v) {
     if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
@@ -85,6 +86,10 @@
       daysWorked: '',
       daysRemaining: '',
       materialsRemaining: '',
+      // Holdback: the share of each progress draw the client keeps until the job is done.
+      holdbackPercent: DEFAULT_HOLDBACK_PERCENT,
+      holdbackReceived: '',
+      holdbackDue: '',
       quotes: [],
       changeOrders: [],
       draws: [],
@@ -102,6 +107,8 @@
       // Drop anything that isn't a row, so a damaged file can't break the totals.
       out[k] = Array.isArray(out[k]) ? out[k].filter(r => r && typeof r === 'object' && !Array.isArray(r)) : [];
     }
+    // Jobs saved before holdback was tracked had none, so their figures don't change.
+    if (job && typeof job === 'object' && !('holdbackPercent' in job)) out.holdbackPercent = 0;
     if (out.overheadPercent === undefined || out.overheadPercent === null || out.overheadPercent === '') {
       out.overheadPercent = DEFAULT_OVERHEAD_PERCENT;
     }
@@ -153,8 +160,18 @@
     const profitToDate = round2(draws - totalCosts);
     const marginToDate = draws ? profitToDate / draws * 100 : 0;
     // Payments: profit above counts everything billed or received; these track the cash.
-    const drawsPaid = sum(j.draws.filter(isPaid));
-    const drawsOutstanding = round2(draws - drawsPaid);
+    // Holdback is worked out per draw (rounded to the cent, as in Excel). The client pays
+    // each draw less its holdback, so "paid" and "outstanding" are net of holdback; the
+    // holdback itself is owed to you until it's released. Profit still counts the full draw.
+    const holdbackPercent = Math.min(Math.max(num(j.holdbackPercent), 0), 100);
+    const holdbackOf = d => round2(money(d.amount) * holdbackPercent / 100);
+    const netOf = d => round2(money(d.amount) - holdbackOf(d));
+    const drawsHoldback = round2(j.draws.reduce((a, d) => a + holdbackOf(d), 0));
+    const drawsNet = round2(draws - drawsHoldback);
+    const drawsPaid = round2(j.draws.filter(isPaid).reduce((a, d) => a + netOf(d), 0));
+    const drawsOutstanding = round2(drawsNet - drawsPaid);
+    const holdbackReceived = money(j.holdbackReceived);
+    const holdbackOwed = round2(drawsHoldback - holdbackReceived);
     const drawsPaidCount = j.draws.filter(d => isPaid(d) && !isBlankRow(d)).length;
     const materialsPaid = sum(j.materials.filter(isPaid));
     const materialsUnpaid = round2(materials - materialsPaid);
@@ -166,6 +183,7 @@
       profit, margin,
       draws, drawCount, billedPercent, remainingToBill, profitToDate, marginToDate,
       drawsPaid, drawsOutstanding, drawsPaidCount, materialsPaid, materialsUnpaid, materialsUnpaidCount,
+      holdbackPercent, drawsHoldback, drawsNet, holdbackReceived, holdbackOwed,
     };
   }
 
@@ -270,6 +288,41 @@
     return { lines, unlinked, subtotal, overhead, total, linkedCount: lines.reduce((a, l) => a + l.count, 0), any: e.any };
   }
 
+  // How the job is doing, in one line, for the Summary and the start screen.
+  // level: 'empty' (nothing entered), 'good', 'watch' or 'bad'.
+  // With an estimate: compares the share of the estimate spent with the share of the
+  // contract billed (on track within 5 points; watch up to 15; beyond that, or over the
+  // estimate, needs attention). Without one: profit to date and the forecast.
+  const HEALTH_WATCH = 5, HEALTH_BAD = 15;
+  function health(job) {
+    const j = normalizeJob(job);
+    const t = totals(j);
+    const e = estimates(j);
+    const f = forecast(j);
+    const pct = formatPercent, m = formatMoney;
+    const over = e.any ? estimateByItem(j).lines.filter(l => l.estimated && l.left < 0).map(l => l.name) : [];
+    const overText = over.length ? ` Over the estimate on ${over.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : '';
+    const profitText = ` Profit to date is ${m(t.profitToDate)}.`;
+    if (!t.subtotal && !t.draws && !t.totalContract) {
+      return { level: 'empty', title: 'Nothing entered yet', detail: 'Add your approved quotes, estimate and costs to see how this job is doing.', over };
+    }
+    if (f.ready && f.profit < 0) {
+      return { level: 'bad', title: 'Needs attention: forecast to lose money', detail: `At the current cost per day the job finishes ${m(-f.profit)} short of the contract value.${overText}${profitText}`, over };
+    }
+    if (e.any) {
+      const gap = e.usedPercent - e.billedPercent;
+      const base = `${pct(e.usedPercent)} of the estimated cost is spent and ${pct(e.billedPercent)} of the contract is billed.`;
+      if (e.remaining < 0) return { level: 'bad', title: 'Needs attention: costs are over the estimate', detail: `${base} Actual costs are ${m(-e.remaining)} over the estimate.${overText}${profitText}`, over };
+      if (gap > HEALTH_BAD) return { level: 'bad', title: 'Needs attention: costs are running ahead of billing', detail: `${base}${overText}${profitText}`, over };
+      if (gap > HEALTH_WATCH) return { level: 'watch', title: 'Watch: costs are a little ahead of billing', detail: `${base}${overText}${profitText}`, over };
+      return { level: 'good', title: 'On track', detail: `${base}${overText}${profitText}`, over };
+    }
+    if (t.profitToDate < 0) {
+      return { level: 'watch', title: 'Watch: billing is behind costs', detail: `Costs so far are ${m(-t.profitToDate)} more than the draws billed. Add your estimate to see whether that's expected.`, over };
+    }
+    return { level: 'good', title: 'Profitable so far', detail: `Profit to date is ${m(t.profitToDate)} (${pct(t.marginToDate)} of draws billed). Add your estimate to track costs against it.`, over };
+  }
+
   // Days can't be negative; anything that isn't a number counts as 0.
   function days(v) {
     const n = num(v);
@@ -323,5 +376,5 @@
     return (v < 0 ? '-$' : '$') + s;
   }
 
-  return { DEFAULT_OVERHEAD_PERCENT, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, COST_KEYS, COST_ITEMS, hasEstimate, estimateOf, estimates, estItemOf, itemLabel, estimateByItem, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
+  return { DEFAULT_OVERHEAD_PERCENT, DEFAULT_HOLDBACK_PERCENT, HEALTH_WATCH, HEALTH_BAD, health, NO_SUPPLIER, LIST_KEYS, PAID_WORDS, ESTIMATE_LINES, ESTIMATE_KEYS, COST_KEYS, COST_ITEMS, hasEstimate, estimateOf, estimates, estItemOf, itemLabel, estimateByItem, num, round, round2, money, sum, isBlankRow, isPaid, newJob, normalizeJob, supplierTotals, totals, forecast, days, formatMoney, formatPercent };
 });

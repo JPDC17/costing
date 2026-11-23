@@ -25,8 +25,10 @@
     </header>
 
     <nav class="sidebar" id="nav">
+      <button class="nav-home" id="navHome" title="All your jobs">‹ All jobs</button>
       <button class="nav-item active" data-tab="summary"><span>Summary</span><span class="badge" id="nav-summary"></span></button>
-      <button class="nav-item" data-tab="contract"><span>Quotes &amp; Change Orders</span><span class="badge" id="nav-contract"></span></button>
+      <button class="nav-item" data-tab="contract"><span>Contract</span><span class="badge" id="nav-contract"></span></button>
+      <button class="nav-item" data-tab="estimate"><span>Estimate</span><span class="badge" id="nav-estimate"></span></button>
       <button class="nav-item" data-tab="draws"><span>Progress Draws</span><span class="badge" id="nav-draws"></span></button>
       <button class="nav-item" data-tab="forecast"><span>Profit Forecast</span><span class="badge" id="nav-forecast"></span></button>
       <button class="nav-item" data-tab="labour"><span>Labour</span><span class="badge" id="nav-labour"></span></button>
@@ -39,18 +41,47 @@
     </nav>
 
     <main class="content">
-      <!-- Summary -->
+      <!-- Summary: job health first, details folded away -->
       <section class="tab active" id="tab-summary">
+        <div class="health card" id="health" data-level="empty">
+          <span class="health-dot" aria-hidden="true"></span>
+          <div>
+            <div class="health-title" id="healthTitle"></div>
+            <div class="health-detail" id="healthDetail"></div>
+          </div>
+        </div>
         <div class="kpis">
-          <div class="kpi"><div class="kpi-label">Total Contract Value</div><div class="kpi-value" id="k-contract"></div><div class="kpi-sub" id="k-contract-sub"></div></div>
-          <div class="kpi"><div class="kpi-label">Draws Submitted</div><div class="kpi-value" id="k-draws"></div><div class="kpi-sub" id="k-draws-sub"></div></div>
-          <div class="kpi"><div class="kpi-label">Total Costs</div><div class="kpi-value" id="k-costs"></div><div class="kpi-sub" id="k-costs-sub"></div></div>
           <div class="kpi"><div class="kpi-label">Profit to Date</div><div class="kpi-value" id="k-ptd"></div><div class="kpi-sub" id="k-ptd-sub"></div></div>
+          <div class="kpi"><div class="kpi-label">Forecast at Completion</div><div class="kpi-value" id="k-fc"></div><div class="kpi-sub" id="k-fc-sub"></div></div>
+          <div class="kpi"><div class="kpi-label" id="k-est-label">Estimate Used</div><div class="kpi-value" id="k-est"></div><div class="kpi-sub" id="k-est-sub"></div></div>
+          <div class="kpi"><div class="kpi-label">Contract Billed</div><div class="kpi-value" id="k-billed"></div><div class="kpi-sub" id="k-billed-sub"></div></div>
         </div>
 
         <div class="grid-2">
           <div class="card">
-            <h2>Total Breakdown</h2>
+            <div class="card-head"><h2 id="sumItemsTitle">Estimate vs Actual, by Item</h2><a href="#" class="hint" data-goto="estimate">Open the Estimate page</a></div>
+            <div id="sumItems" class="sum-items"></div>
+            <div class="split" id="split" aria-label="Cost split"></div>
+            <div class="legend" id="legend"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Cash</h2><a href="#" class="hint" data-goto="draws">Progress Draws</a></div>
+            <table class="breakdown cash">
+              <tbody>
+                <tr><th>Draws Billed <span class="hint" id="c-draw-count"></span></th><td id="c-draws"></td></tr>
+                <tr class="hb-row"><th>Holdback Kept by Client <span class="hint" id="c-hb-pct"></span></th><td id="c-hb"></td></tr>
+                <tr><th>Paid by Client <span class="hint" id="c-paid-count"></span></th><td id="c-paid"></td></tr>
+                <tr class="subtotal"><th>Outstanding <span class="hint" id="c-out-note">(billed, not yet paid)</span></th><td id="c-out"></td></tr>
+                <tr class="subtotal hb-row"><th>Holdback Owed to You <span class="hint" id="c-hb-due"></span></th><td id="c-hb-owed"></td></tr>
+                <tr class="info"><th>Unpaid Supplier Invoices <span class="hint" id="c-unpaid-count"></span></th><td id="c-unpaid"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <details class="card fold" id="breakdownFold">
+            <summary><h2>Full Breakdown</h2><span class="hint">Costs, overhead, contract, draws and forecast</span></summary>
             <table class="breakdown">
               <tbody>
                 <tr><th>Labour</th><td id="b-labour"></td></tr>
@@ -91,10 +122,7 @@
                 <tr class="info"><th>Unpaid Supplier Invoices <span class="hint" id="b-unpaid-count"></span></th><td id="b-unpaid"></td></tr>
               </tbody>
             </table>
-            <div class="split" id="split" aria-label="Cost split"></div>
-            <div class="legend" id="legend"></div>
-          </div>
-
+          </details>
           <div class="card">
             <h2>Job Details</h2>
             <div class="form">
@@ -111,32 +139,32 @@
       <!-- Contract -->
       <section class="tab" id="tab-contract">
         <div class="card">
-          <div class="card-head"><h2>Approved Quotes</h2><span class="hint">Original contract value</span></div>
+          <div class="card-head"><h2>Approved Quotes</h2><span class="hint">Original contract value. Enter what each quote should cost on the <a href="#" data-goto="estimate">Estimate</a> page.</span></div>
           <div data-table="quotes"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><h2>Estimated Costs</h2><span class="hint">What you estimated each approved quote would cost. Bid price comes from the quote above.</span></div>
-          <div id="estTable"></div>
-          <div class="est-compare" id="estCompare" hidden>
-            <div class="draw-stats">
-              <div><div class="kpi-label">Estimated Cost <span class="kpi-note">(before overhead)</span></div><div class="stat" id="e-cost"></div></div>
-              <div><div class="kpi-label">Actual Cost to Date <span class="kpi-note">(before overhead)</span></div><div class="stat" id="e-actual"></div></div>
-              <div><div class="kpi-label">Left in Estimate</div><div class="stat" id="e-left"></div></div>
-              <div><div class="kpi-label">Estimated Profit</div><div class="stat pos" id="e-profit"></div></div>
-            </div>
-            <div class="est-bars">
-              <div class="est-bar-label"><span>Estimated cost used</span><span id="e-used"></span></div>
-              <div class="meter" aria-hidden="true"><div class="meter-fill meter-paid" id="e-used-bar"></div></div>
-              <div class="est-bar-label"><span>Contract billed</span><span id="e-billed"></span></div>
-              <div class="meter" aria-hidden="true"><div class="meter-fill" id="e-billed-bar"></div></div>
-            </div>
-            <div class="hint" id="e-note"></div>
-            <div class="est-by-item" id="estByItem"></div>
-          </div>
         </div>
         <div class="card">
           <div class="card-head"><h2>Change Orders</h2><span class="hint">Tracked separately — not included in the contract value</span></div>
           <div data-table="changeOrders"></div>
+        </div>
+      </section>
+
+      <!-- Estimate -->
+      <section class="tab" id="tab-estimate">
+        <div id="estCompare" hidden>
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-label">Estimated Cost</div><div class="kpi-value" id="e-cost"></div><div class="kpi-sub" id="e-cost-sub"></div></div>
+            <div class="kpi"><div class="kpi-label">Actual to Date</div><div class="kpi-value" id="e-actual"></div><div class="kpi-sub">before overhead</div></div>
+            <div class="kpi"><div class="kpi-label">Left in Estimate</div><div class="kpi-value" id="e-left"></div><div class="kpi-sub" id="e-left-sub"></div></div>
+            <div class="kpi"><div class="kpi-label">Estimated Profit</div><div class="kpi-value" id="e-profit"></div><div class="kpi-sub" id="e-profit-sub"></div></div>
+          </div>
+          <div class="card">
+            <div class="est-by-item" id="estByItem"></div>
+            <div class="hint est-note" id="e-note"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Estimated Costs</h2><span class="hint">What you estimated each approved quote would cost. Bid price comes from the quote on the Contract page.</span></div>
+          <div id="estTable"></div>
         </div>
       </section>
 
@@ -199,17 +227,27 @@
 
       <section class="tab" id="tab-draws">
         <div class="card">
-          <div class="draw-stats three">
+          <div class="draw-stats">
             <div><div class="kpi-label">Total Contract Value</div><div class="stat" id="d-contract"></div></div>
             <div><div class="kpi-label">Draws Submitted</div><div class="stat" id="d-draws"></div></div>
             <div><div class="kpi-label">Remaining to Bill</div><div class="stat" id="d-remaining"></div></div>
             <div><div class="kpi-label">Profit to Date</div><div class="stat" id="d-ptd"></div></div>
             <div><div class="kpi-label">Paid by Client</div><div class="stat pos" id="d-paid"></div></div>
             <div><div class="kpi-label">Outstanding <span class="kpi-note">(billed, not yet paid)</span></div><div class="stat" id="d-out"></div></div>
+            <div><div class="kpi-label">Holdback Held</div><div class="stat" id="d-hb"></div></div>
+            <div><div class="kpi-label">Holdback Owed to You</div><div class="stat" id="d-hb-owed"></div></div>
           </div>
           <div class="meter" aria-hidden="true"><div class="meter-fill meter-paid" id="d-meter-paid"></div><div class="meter-fill" id="d-meter"></div></div>
           <div class="meter-legend"><span><i class="meter-paid"></i>Paid</span><span><i class="meter-billed"></i>Billed, not yet paid</span></div>
           <div class="hint" id="d-meter-label"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Holdback</h2><span class="hint">The share of each draw the client keeps until the job is finished. Paid and outstanding above are net of it; profit counts the full draw.</span></div>
+          <div class="fc-inputs hb-inputs">
+            <label>Holdback %<input id="hbPercent" data-hb="holdbackPercent" type="text" inputmode="decimal" placeholder="0"></label>
+            <label>Holdback received so far<input id="hbReceived" data-hb="holdbackReceived" type="text" inputmode="decimal" placeholder="0.00"></label>
+            <label>Holdback due<input id="hbDue" data-hb="holdbackDue" type="text" placeholder="e.g. 60 days after completion"></label>
+          </div>
         </div>
         <div class="card">
           <div class="card-head"><h2>Progress Draws</h2><span class="hint">Each progress billing submitted to the client</span></div>
@@ -244,6 +282,50 @@
           </div>
         </div>
       </section>
+    </main>
+  </div>
+
+  <!-- Start screen: every job you've opened or saved, with how it's doing -->
+  <div class="home" id="home" hidden>
+    <header class="home-top">
+      <div class="brand" id="homeBrand"><img id="homeLogo" src="logo.png" alt=""><span id="homeBrandName">Job Costing</span></div>
+      <div class="home-actions">
+        <button id="homeBack" hidden></button>
+        <button id="homeOpen" title="Open a job file (Ctrl+O)">Open job…</button>
+        <button id="homeNew" class="primary" title="Start a new job (Ctrl+N)">+ New job</button>
+      </div>
+    </header>
+    <main class="home-main">
+      <div class="home-head">
+        <div>
+          <h1>Your jobs</h1>
+          <p class="hint">Figures as of each job’s last save or open. Click a job to open it.</p>
+        </div>
+        <label class="home-find">Find a job<input id="homeFind" type="search" placeholder="Name, number or client"></label>
+      </div>
+      <div class="recover" id="recover" hidden role="alert">
+        <strong>Unsaved work was recovered</strong>
+        <span id="recoverText"></span>
+        <span class="recover-gap"></span>
+        <button id="recoverRestore" class="primary">Restore</button>
+        <button id="recoverDiscard">Discard</button>
+      </div>
+      <div class="kpis home-kpis" id="homeKpis">
+        <div class="kpi"><div class="kpi-label">Jobs</div><div class="kpi-value" id="h-count"></div></div>
+        <div class="kpi"><div class="kpi-label">Contract Value</div><div class="kpi-value" id="h-contract"></div></div>
+        <div class="kpi"><div class="kpi-label">Billed, Not Yet Paid</div><div class="kpi-value" id="h-out"></div></div>
+        <div class="kpi"><div class="kpi-label">Holdback Owed to You</div><div class="kpi-value" id="h-hb"></div></div>
+      </div>
+      <div class="card home-list">
+        <div class="table-wrap">
+          <table class="jobs">
+            <thead><tr><th>Job</th><th>Status</th><th class="num">Contract</th><th class="num">Profit to Date</th><th class="bars">Estimate Used / Billed</th><th class="num">Last Saved</th><th class="act"></th></tr></thead>
+            <tbody id="homeJobs"></tbody>
+          </table>
+        </div>
+        <p class="hint home-empty" id="homeEmpty" hidden>No jobs yet. Open a job file or start a new one, and it will appear here.</p>
+      </div>
+      <p class="hint">Status: <strong>On track</strong> when the share of the estimate used is no more than 5 points ahead of the share of the contract billed; <strong>Watch</strong> up to 15 points ahead; <strong>Needs attention</strong> beyond that, over the estimate, or forecast to lose money. Jobs without an estimate are judged on profit to date.</p>
     </main>
   </div>
 

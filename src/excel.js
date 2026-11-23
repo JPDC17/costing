@@ -211,8 +211,15 @@ async function exportWorkbook(job, filePath, company) {
 
   // --- Progress Draws ---
   const wsD = wb.addWorksheet(SHEETS.draws);
-  wsD.columns = [{ width: 10 }, { width: 18 }, { width: 40 }, { width: 18 }, { width: 8 }, { width: 40 }];
-  header(wsD, 1, ['Draw #', 'Date Submitted', 'Description', 'Amount', 'Paid', 'Notes']);
+  wsD.columns = [{ width: 10 }, { width: 18 }, { width: 40 }, { width: 18 }, { width: 8 }, { width: 40 }, { width: 16 }, { width: 18 }, { width: 3 }, { width: 22 }, { width: 18 }];
+  header(wsD, 1, ['Draw #', 'Date Submitted', 'Description', 'Amount', 'Paid', 'Notes', 'Holdback', 'Net (paid to you)']);
+  // Holdback settings (shaded cells can be changed in Excel).
+  const hbFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFECCC' } };
+  [['Holdback %', Calc.num(job.holdbackPercent) / 100, '0.0#%'], ['Holdback Received', String(job.holdbackReceived ?? '').trim() === '' ? null : Calc.money(job.holdbackReceived), MONEY], ['Holdback Due', job.holdbackDue || '', '@']]
+    .forEach(([label, value, fmt], i) => {
+      const l = wsD.getCell(2 + i, 10); l.value = label; bold(l);
+      const c = wsD.getCell(2 + i, 11); c.value = value; c.numFmt = fmt; c.fill = hbFill;
+    });
   let d = 2;
   if (!job.draws.length) d++; // keep one empty row so the SUM never includes its own cell
   for (const x of job.draws) {
@@ -226,20 +233,32 @@ async function exportWorkbook(job, filePath, company) {
     wsD.getCell(d, 5).value = Calc.isPaid(x) ? 'Yes' : '';
     wsD.getCell(d, 5).alignment = { horizontal: 'center' };
     wsD.getCell(d, 6).value = x.notes || '';
+    // per draw, rounded to the cent like the app
+    const hb = Calc.round2(Calc.money(x.amount) * Calc.num(t.holdbackPercent) / 100);
+    wsD.getCell(d, 7).value = { formula: `ROUND(D${d}*$K$2,2)`, result: hb }; wsD.getCell(d, 7).numFmt = MONEY;
+    wsD.getCell(d, 8).value = { formula: `D${d}-G${d}`, result: Calc.round2(Calc.money(x.amount) - hb) }; wsD.getCell(d, 8).numFmt = MONEY;
     d++;
   }
   wsD.getCell(d, 1).value = 'Total'; bold(wsD.getCell(d, 1));
   wsD.getCell(d, 4).value = { formula: `SUM(D2:D${d - 1})`, result: t.draws };
   wsD.getCell(d, 4).numFmt = MONEY; bold(wsD.getCell(d, 4));
   const drawsRef = `${q(SHEETS.draws)}!D${d}`;
-  // Paid draws: Paid column says "Yes" (type Yes, Y or x in Excel to mark one paid).
-  wsD.getCell(d + 1, 1).value = 'Paid'; bold(wsD.getCell(d + 1, 1));
-  wsD.getCell(d + 1, 4).value = { formula: paidSum(`E2:E${d - 1}`, `D2:D${d - 1}`), result: t.drawsPaid };
-  wsD.getCell(d + 1, 4).numFmt = MONEY;
-  wsD.getCell(d + 2, 1).value = 'Outstanding'; bold(wsD.getCell(d + 2, 1));
-  wsD.getCell(d + 2, 4).value = { formula: `D${d}-D${d + 1}`, result: t.drawsOutstanding };
-  wsD.getCell(d + 2, 4).numFmt = MONEY;
+  wsD.getCell(d, 7).value = { formula: `SUM(G2:G${d - 1})`, result: t.drawsHoldback }; wsD.getCell(d, 7).numFmt = MONEY; bold(wsD.getCell(d, 7));
+  wsD.getCell(d, 8).value = { formula: `SUM(H2:H${d - 1})`, result: t.drawsNet }; wsD.getCell(d, 8).numFmt = MONEY; bold(wsD.getCell(d, 8));
+  // Paid draws: Paid column says "Yes" (type Yes, Y or x in Excel to mark one paid). The
+  // client pays each draw less its holdback, so paid and outstanding are net amounts.
+  const dRow = (row, label, formula, result) => {
+    wsD.getCell(row, 1).value = label; bold(wsD.getCell(row, 1));
+    wsD.getCell(row, 4).value = { formula, result }; wsD.getCell(row, 4).numFmt = MONEY;
+  };
+  dRow(d + 1, 'Paid (net of holdback)', paidSum(`E2:E${d - 1}`, `H2:H${d - 1}`), t.drawsPaid);
+  dRow(d + 2, 'Outstanding (net of holdback)', `H${d}-D${d + 1}`, t.drawsOutstanding);
+  dRow(d + 3, 'Holdback Held', `G${d}`, t.drawsHoldback);
+  dRow(d + 4, 'Holdback Owed to You', `G${d}-N(K3)`, t.holdbackOwed);
   const drawsPaidRef = `${q(SHEETS.draws)}!D${d + 1}`;
+  const drawsOutRef = `${q(SHEETS.draws)}!D${d + 2}`;
+  const holdbackHeldRef = `${q(SHEETS.draws)}!D${d + 3}`;
+  const holdbackOwedRef = `${q(SHEETS.draws)}!D${d + 4}`;
 
   // --- Labour / Equipment ---
   const labourSheet = writeDatedSheet(wb, SHEETS.labour, job.labour);
@@ -383,7 +402,9 @@ async function exportWorkbook(job, filePath, company) {
   const drawsRow = tr;
   line(tr, 'Draws Submitted', drawsRef, t.draws); tr++;
   line(tr, 'Paid by Client', drawsPaidRef, t.drawsPaid); tr++;
-  line(tr, 'Outstanding (Not Yet Paid)', `B${drawsRow}-B${tr - 1}`, t.drawsOutstanding); tr++;
+  line(tr, 'Outstanding (Not Yet Paid)', drawsOutRef, t.drawsOutstanding); tr++;
+  line(tr, 'Holdback Held', holdbackHeldRef, t.drawsHoldback); tr++;
+  line(tr, 'Holdback Owed to You', holdbackOwedRef, t.holdbackOwed); tr++;
   pct(tr, 'Billed to Date (% of Contract)', `IF(B${tcvRow}=0,0,B${drawsRow}/B${tcvRow})`, t.billedPercent / 100); tr++;
   line(tr, 'Remaining to Bill', `B${tcvRow}-B${drawsRow}`, t.remainingToBill); tr++;
   const ptdRow = tr;
@@ -529,6 +550,7 @@ async function importWorkbook(filePath) {
     throw new Error('This file could not be read as an Excel workbook (.xlsx).');
   }
   const job = Calc.newJob();
+  job.holdbackPercent = 0; // only what the workbook says (older exports and the template have none)
   const get = name => wb.worksheets.find(w => w.name.trim().toLowerCase() === name.toLowerCase());
   if (!Object.values(SHEETS).some(get)) {
     throw new Error('This workbook doesn\'t look like the Basic Tracker template or a Job Costing export (no matching sheet names).');
@@ -568,6 +590,13 @@ async function importWorkbook(filePath) {
     const c = Object.fromEntries(columns(wsD, 1,
       { drawNumber: 'Draw #', date: 'Date Submitted', description: 'Description', amount: 'Amount', paid: 'Paid', notes: 'Notes' },
       { drawNumber: 1, date: 2, description: 3, amount: 4, notes: 5 }));
+    for (let r = 1; r <= Math.min(wsD.rowCount, 20); r++) {
+      const label = text(wsD.getRow(r).getCell(10)).toLowerCase();
+      const v = cellValue(wsD.getRow(r).getCell(11));
+      if (label === 'holdback %' && typeof v === 'number') job.holdbackPercent = Calc.round2(v * 100);
+      if (label === 'holdback received') job.holdbackReceived = v === null || v === '' ? '' : (typeof v === 'number' ? Calc.round2(v) : Calc.num(v));
+      if (label === 'holdback due') job.holdbackDue = text(wsD.getRow(r).getCell(11));
+    }
     job.draws = readRows(wsD, 2, [['drawNumber', c.drawNumber], ['date', c.date], ['description', c.description], ['amount', c.amount, 'money'], ['paid', c.paid, 'paid'], ['notes', c.notes]]);
   }
   for (const [key, name] of [['labour', SHEETS.labour], ['equipment', SHEETS.equipment]]) {

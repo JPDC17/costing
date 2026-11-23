@@ -118,6 +118,7 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
+        { label: 'All Jobs', accelerator: 'CmdOrCtrl+Shift+J', click: () => send('home') },
         { label: 'New Job', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
         { label: 'Open Job…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
         { type: 'separator' },
@@ -157,7 +158,24 @@ function buildMenu() {
 ipcMain.handle('job:open', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: JOB_FILTERS });
   if (res.canceled || !res.filePaths.length) return null;
-  const filePath = res.filePaths[0];
+  return readJobFile(res.filePaths[0]);
+});
+
+// Open a job from the start screen's list. Only paths already on that list can be
+// opened this way (anything else goes through the Open dialog).
+ipcMain.handle('job:openRecent', async (_e, filePath) => {
+  const { recentJobs } = await readSettings();
+  const entry = recentJobs.find(r => samePath(r.path, filePath));
+  if (!entry) throw new Error('That job isn’t on the list any more.');
+  try {
+    return await readJobFile(entry.path);
+  } catch (err) {
+    if (err.code === 'ENOENT') throw new Error('That file has been moved, renamed or deleted. Use Open job… to find it.');
+    throw err;
+  }
+});
+
+async function readJobFile(filePath) {
   let data;
   try {
     data = JSON.parse(await fs.readFile(filePath, 'utf8'));
@@ -169,7 +187,7 @@ ipcMain.handle('job:open', async () => {
   const job = Calc.normalizeJob(data);
   app.addRecentDocument(filePath);
   return { filePath, job };
-});
+}
 
 ipcMain.handle('job:save', async (_e, { job, filePath, saveAs }) => {
   let target = filePath;
@@ -201,11 +219,70 @@ const normalizeTheme = t => (t === 'dark' ? 'dark' : 'light');
 async function readSettings() {
   try {
     const data = JSON.parse(await fs.readFile(settingsFile(), 'utf8'));
-    return { company: Company.normalizeCompany(data && data.company), theme: normalizeTheme(data && data.theme) };
+    return { company: Company.normalizeCompany(data && data.company), theme: normalizeTheme(data && data.theme), recentJobs: cleanRecent(data && data.recentJobs) };
   } catch {
-    return { company: Company.emptyCompany(), theme: 'light' };
+    return { company: Company.emptyCompany(), theme: 'light', recentJobs: [] };
   }
 }
+
+// ---------- Recent jobs (the start screen) ----------
+// Each entry is the file's path plus the job's headline figures as of its last save or
+// open, so the list shows without opening every file.
+
+const MAX_RECENT = 25;
+const samePath = (a, b) => (process.platform === 'win32' ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
+const LEVELS = ['empty', 'good', 'watch', 'bad'];
+function cleanRecent(list) {
+  if (!Array.isArray(list)) return [];
+  const str = (v, n = 200) => String(v ?? '').slice(0, n);
+  const numOrNull = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return list.filter(r => r && typeof r.path === 'string' && path.isAbsolute(r.path)).slice(0, MAX_RECENT).map(r => ({
+    path: r.path, name: str(r.name), number: str(r.number), client: str(r.client),
+    contract: numOrNull(r.contract), profitToDate: numOrNull(r.profitToDate), billed: numOrNull(r.billed), used: numOrNull(r.used),
+    outstanding: numOrNull(r.outstanding), holdbackOwed: numOrNull(r.holdbackOwed),
+    level: LEVELS.includes(r.level) ? r.level : 'empty', title: str(r.title), savedAt: str(r.savedAt, 40),
+  }));
+}
+
+ipcMain.handle('recent:list', async () => {
+  const { recentJobs } = await readSettings();
+  return Promise.all(recentJobs.map(async r => ({ ...r, missing: !(await fs.stat(r.path).then(st => st.isFile(), () => false)) })));
+});
+
+ipcMain.handle('recent:record', async (_e, entry) => {
+  const [clean] = cleanRecent([{ ...entry, savedAt: new Date().toISOString() }]);
+  if (!clean) return;
+  await updateSettings(st => ({ ...st, recentJobs: [clean, ...st.recentJobs.filter(r => !samePath(r.path, clean.path))].slice(0, MAX_RECENT) }));
+});
+
+ipcMain.handle('recent:remove', async (_e, filePath) => {
+  await updateSettings(st => ({ ...st, recentJobs: st.recentJobs.filter(r => !samePath(r.path, filePath)) }));
+});
+
+// ---------- Auto-save recovery ----------
+// While a job has unsaved changes, the window saves a copy here every minute. It's
+// removed when the job is saved or its changes are discarded, so one that's still
+// here at start-up means the app closed unexpectedly: the start screen offers it.
+
+const recoveryFile = () => path.join(app.getPath('userData'), 'recovery.json');
+
+ipcMain.handle('recovery:save', async (_e, { job, filePath }) => {
+  if (!job || typeof job !== 'object') return;
+  await fs.mkdir(path.dirname(recoveryFile()), { recursive: true });
+  await writeFileSafely(recoveryFile(), JSON.stringify({ savedAt: new Date().toISOString(), filePath: typeof filePath === 'string' ? filePath : null, job }));
+});
+
+ipcMain.handle('recovery:get', async () => {
+  try {
+    const data = JSON.parse(await fs.readFile(recoveryFile(), 'utf8'));
+    if (!data || typeof data.job !== 'object' || !data.job) return null;
+    return { savedAt: String(data.savedAt || ''), filePath: typeof data.filePath === 'string' ? data.filePath : null, job: Calc.normalizeJob(data.job) };
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('recovery:clear', async () => { await fs.rm(recoveryFile(), { force: true }); });
 
 // Settings are read, changed and written one at a time, so saving the company details
 // and switching the theme at the same moment can't overwrite each other.
@@ -366,7 +443,7 @@ ipcMain.handle('update:check', async () => {
   try {
     const { m } = await checkForUpdate();
     const available = !!pendingUpdate;
-    return { current: app.getVersion(), latest: m.version, available, notes: m.notes, size: m.size };
+    return { current: app.getVersion(), latest: m.version, available, notes: m.notes, size: updateFileFor(m).size };
   } catch (err) {
     const offline = /fetch|network|net::|ERR_|ENOTFOUND|ECONN|abort|timed? ?out/i.test(String(err && (err.message || err)));
     throw new Error(offline ? 'Could not reach the update server. Check your internet connection and try again.' : err.message);
@@ -386,14 +463,16 @@ ipcMain.handle('update:install', async () => {
   }
 });
 
-async function installUpdate(m) {
-  const portableExe = process.env.PORTABLE_EXECUTABLE_FILE;
-  if (!portableExe) {
-    // Not running as the portable exe (e.g. from source): just open the download.
-    await shell.openExternal(m.url);
-    return { manual: true };
-  }
-  const res = await net.fetch(m.url, { cache: 'no-store' });
+// How this copy runs: the portable exe, installed with the installer, or from source.
+const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || '';
+const isInstalled = () => !portableExe() && app.isPackaged && process.platform === 'win32';
+// The file an update downloads for this copy: the installer for an installed copy (when
+// the release has one), else the portable exe.
+const updateFileFor = m => (isInstalled() && m.setup ? m.setup : m);
+
+// Download a file, checking its size and SHA-256, with progress sent to the window.
+async function downloadVerified(f) {
+  const res = await net.fetch(f.url, { cache: 'no-store' });
   if (!res.ok || !res.body) throw new Error(`The download failed (${res.status}).`);
   const hash = crypto.createHash('sha256');
   const chunks = [];
@@ -401,16 +480,26 @@ async function installUpdate(m) {
   for await (const chunk of res.body) {
     const buf = Buffer.from(chunk);
     chunks.push(buf); hash.update(buf); received += buf.length;
-    if (received > m.size) throw new Error('The download is larger than expected, so it was not used.');
-    if (win && Date.now() - lastSent > 150) { lastSent = Date.now(); win.webContents.send('update:progress', { received, total: m.size }); }
+    if (received > f.size) throw new Error('The download is larger than expected, so it was not used.');
+    if (win && Date.now() - lastSent > 150) { lastSent = Date.now(); win.webContents.send('update:progress', { received, total: f.size }); }
   }
-  if (received !== m.size) throw new Error('The download was incomplete. Please try again.');
-  if (hash.digest('hex') !== m.sha256) throw new Error('The download did not match its checksum, so it was not used. If an update was published in the last few minutes, GitHub may still be updating its copy; please try again shortly.');
-  if (win) win.webContents.send('update:progress', { received, total: m.size });
+  if (received !== f.size) throw new Error('The download was incomplete. Please try again.');
+  if (hash.digest('hex') !== f.sha256) throw new Error('The download did not match its checksum, so it was not used. If an update was published in the last few minutes, GitHub may still be updating its copy; please try again shortly.');
+  if (win) win.webContents.send('update:progress', { received, total: f.size });
+  return Buffer.concat(chunks);
+}
 
+async function installUpdate(m) {
+  const installed = isInstalled() && !!m.setup;
+  if (!portableExe() && !installed) {
+    // From source, or an installed copy and a release without an installer: open the download.
+    await shell.openExternal(m.url);
+    return { manual: true };
+  }
+  const data = await downloadVerified(updateFileFor(m));
   const dir = await fs.mkdtemp(path.join(app.getPath('temp'), 'JobCosting-update-'));
-  const newExe = path.join(dir, `JobCosting-Portable-${m.version}.exe`);
-  await fs.writeFile(newExe, Buffer.concat(chunks));
+  const newExe = path.join(dir, installed ? `JobCosting-Setup-${m.version}.exe` : `JobCosting-Portable-${m.version}.exe`);
+  await fs.writeFile(newExe, data);
   try {
     // Windows PowerShell rebuilds its own module path; one inherited from PowerShell 7
     // (if the app was started from a PowerShell 7 window) can stop it loading its commands.
@@ -420,7 +509,10 @@ async function installUpdate(m) {
     // did on Windows 10/11 in testing). So start a short-lived PowerShell normally and
     // wait for it: it launches the swap as its own hidden process (which carries on
     // after the app closes) and exits with 0 once that has started.
-    const launcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Updater.launchCommand(newExe, portableExe)], { stdio: 'ignore', windowsHide: true, env });
+    // Portable: swap the exe once the app has closed. Installed: run the new installer
+    // silently once the app has closed; it starts the new version when it's done.
+    const command = installed ? Updater.launchInstallCommand(newExe, process.pid) : Updater.launchCommand(newExe, portableExe());
+    const launcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', command], { stdio: 'ignore', windowsHide: true, env });
     const code = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { launcher.kill(); reject(new Error('timed out')); }, 30000);
       launcher.once('error', err => { clearTimeout(timer); reject(err); });
@@ -442,7 +534,7 @@ async function installUpdate(m) {
 async function e2eHooks() {
   const marker = process.env.JOB_COSTING_E2E_MARKER;
   const note = async text => { if (marker) await fs.appendFile(marker, `${new Date().toISOString()} ${app.getVersion()} ${text}\n`).catch(() => {}); };
-  await note(`started (exe ${process.env.PORTABLE_EXECUTABLE_FILE || '-'})`);
+  await note(`started (exe ${portableExe() || '-'}; running ${app.getPath('exe')}; ${isInstalled() ? 'installed' : portableExe() ? 'portable' : 'source'})`);
   if (win) {
     const ready = () => note('window ready');
     if (win.webContents.isLoading()) win.webContents.once('did-finish-load', ready); else ready();

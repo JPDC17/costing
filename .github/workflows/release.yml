@@ -4,7 +4,7 @@
 # end-to-end test where a real packaged exe updates itself to a newer one. A release is
 # only published if all of these pass.
 # If package.json has a version that hasn't been released yet (e.g. you raised it from
-# 1.2.0 to 1.3.0), also build the portable exe and publish it as a GitHub Release, tagged
+# 1.2.0 to 1.3.0), also build the portable exe and the installer and publish them as a GitHub Release, tagged
 # v<version>, with latest.json (which the app's update button reads). The release notes,
 # also shown in the app's update prompt, come from RELEASE_NOTES.md.
 name: Release
@@ -41,16 +41,20 @@ jobs:
       - name: Update swap test (real Windows PowerShell)
         run: node scripts/test-swap-windows.js
 
-      - name: Build test copies (current, and a fake newer 9.9.9)
+      - name: Build test copies (current, and a fake newer 9.9.9; portable and installer)
         shell: bash
         run: |
           node scripts/bundle.js
-          npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-old
-          npx electron-builder --win portable --x64 --publish never -c.directories.output=e2e-new -c.extraMetadata.version=9.9.9
+          npx electron-builder --win portable nsis --x64 --publish never -c.directories.output=e2e-old
+          npx electron-builder --win portable nsis --x64 --publish never -c.directories.output=e2e-new -c.extraMetadata.version=9.9.9
 
       - name: Update end to end (the real exe updates itself on Windows)
         shell: powershell
         run: .\scripts\e2e-update-windows.ps1 -Old e2e-old\JobCosting-Portable.exe -New e2e-new\JobCosting-Portable.exe
+
+      - name: Installer end to end (install, then the installed app updates itself)
+        shell: powershell
+        run: .\scripts\e2e-install-windows.ps1 -Old e2e-old\JobCosting-Setup.exe -New e2e-new\JobCosting-Setup.exe
 
       - name: Is this version new?
         id: version
@@ -68,12 +72,12 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build the portable exe
+      - name: Build the portable exe and the installer
         if: steps.version.outputs.publish == 'true'
         shell: bash
         run: |
           node scripts/bundle.js
-          npx electron-builder --win portable --x64 --publish never
+          npx electron-builder --win portable nsis --x64 --publish never
 
       - name: Write latest.json
         if: steps.version.outputs.publish == 'true'
@@ -86,6 +90,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" dist/JobCosting-Portable.exe latest.json \
+          gh release create "${{ steps.version.outputs.tag }}" dist/JobCosting-Portable.exe dist/JobCosting-Setup.exe latest.json \
             --target "$GITHUB_SHA" --title "Job Costing ${{ steps.version.outputs.tag }}" \
             --notes-file RELEASE_NOTES.md --latest

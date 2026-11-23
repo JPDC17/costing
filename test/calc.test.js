@@ -222,3 +222,44 @@ test('damaged job files: rows that are not objects are dropped', () => {
   assert.deepStrictEqual(j.draws, []);
   assert.strictEqual(Calc.totals(j).labour, 10);
 });
+
+test('holdback: kept back from each draw, so paid and outstanding are net; profit unchanged', () => {
+  const j = { ...Calc.newJob(), quotes: [{ amount: 100000 }], labour: [{ amount: 20000 }],
+    draws: [{ amount: 10000.05, paid: true }, { amount: 5000, paid: false }], holdbackReceived: 300 };
+  const t = Calc.totals(j);
+  assert.strictEqual(t.holdbackPercent, 10);
+  assert.strictEqual(t.drawsHoldback, 1500.01); // 1000.01 (10% of 10,000.05, rounded) + 500
+  assert.strictEqual(t.drawsNet, 13500.04);
+  assert.strictEqual(t.drawsPaid, 9000.04);
+  assert.strictEqual(t.drawsOutstanding, 4500);
+  assert.strictEqual(t.holdbackOwed, 1200.01);
+  assert.strictEqual(t.profitToDate, Calc.round2(15000.05 - t.totalCosts)); // full draws count for profit
+});
+
+test('holdback: jobs saved before it existed keep no holdback; bad values are clamped', () => {
+  assert.strictEqual(Calc.normalizeJob({ draws: [] }).holdbackPercent, 0);
+  assert.strictEqual(Calc.totals({ draws: [{ amount: 100, paid: true }] }).drawsPaid, 100);
+  assert.strictEqual(Calc.totals({ holdbackPercent: 150, draws: [{ amount: 100 }] }).drawsHoldback, 100);
+  assert.strictEqual(Calc.totals({ holdbackPercent: -5, draws: [{ amount: 100 }] }).drawsHoldback, 0);
+});
+
+test('job health: levels and wording', () => {
+  assert.strictEqual(Calc.health(Calc.newJob()).level, 'empty');
+  const base = { quotes: [{ amount: 100000, estCrew: 50000 }], labour: [{ amount: 20000, estItem: 'labour' }] };
+  // 40% of the estimate used, 40% billed -> on track
+  assert.strictEqual(Calc.health({ ...base, draws: [{ amount: 40000 }] }).level, 'good');
+  // 40% used, 30% billed -> watch (10 points ahead)
+  assert.strictEqual(Calc.health({ ...base, draws: [{ amount: 30000 }] }).level, 'watch');
+  // 40% used, 20% billed -> needs attention
+  const bad = Calc.health({ ...base, draws: [{ amount: 20000 }] });
+  assert.strictEqual(bad.level, 'bad');
+  assert.match(bad.title, /ahead of billing/);
+  // over the estimate
+  const over = Calc.health({ ...base, labour: [{ amount: 60000, estItem: 'labour' }], draws: [{ amount: 90000 }] });
+  assert.strictEqual(over.level, 'bad');
+  assert.deepStrictEqual(over.over, ['Labour']);
+  assert.match(over.detail, /\$10,000\.00 over the estimate/);
+  // no estimate: profit decides
+  assert.strictEqual(Calc.health({ quotes: [{ amount: 1000 }], labour: [{ amount: 100 }], draws: [{ amount: 500 }] }).level, 'good');
+  assert.strictEqual(Calc.health({ quotes: [{ amount: 1000 }], labour: [{ amount: 600 }], draws: [{ amount: 500 }] }).level, 'watch');
+});

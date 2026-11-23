@@ -8,10 +8,10 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "dist": "node scripts/bundle.js && electron-builder",
-    "dist:win": "node scripts/bundle.js && electron-builder --win portable --x64",
+    "dist:win": "node scripts/bundle.js && electron-builder --win portable nsis --x64",
     "dist:mac": "node scripts/bundle.js && electron-builder --mac",
     "dist:linux": "node scripts/bundle.js && electron-builder --linux",
-    "release": "node scripts/bundle.js && electron-builder --win portable --x64 --publish never && node scripts/write-manifest.js",
+    "release": "node scripts/bundle.js && electron-builder --win portable nsis --x64 --publish never && node scripts/write-manifest.js",
     "bundle": "node scripts/bundle.js"
   },
   "license": "UNLICENSED",
@@ -38,6 +38,12 @@
       "target": [
         {
           "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -70,10 +76,21 @@
     ],
     "extraMetadata": {
       "main": "bundle/main.js"
+    },
+    "nsis": {
+      "artifactName": "JobCosting-Setup.exe",
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Job Costing",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     }
   },
   "updates": {
     "manifest": "https://github.com/JPDC17/costing/releases/latest/download/latest.json",
-    "download": "https://github.com/JPDC17/costing/releases/download/v{version}/JobCosting-Portable.exe"
+    "download": "https://github.com/JPDC17/costing/releases/download/v{version}/JobCosting-Portable.exe",
+    "setupDownload": "https://github.com/JPDC17/costing/releases/download/v{version}/JobCosting-Setup.exe"
   }
 }

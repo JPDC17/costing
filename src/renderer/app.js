@@ -104,6 +104,7 @@ function invalidAmountNote() {
   for (const key of Object.keys(TABLES)) for (const r of state.job[key]) if (isBadAmount(r.amount)) n++;
   for (const q of state.job.quotes) for (const k of Calc.ESTIMATE_KEYS) if (isBadAmount(q[k])) n++;
   if (isBadAmount(state.job.materialsRemaining)) n++;
+  if (isBadAmount(state.job.holdbackReceived) || isBadAmount(state.job.holdbackPercent)) n++;
   return n ? ` — note: ${n} amount${n === 1 ? ' isn’t a number and was' : 's aren’t numbers and were'} counted as $0 (shown in red)` : '';
 }
 
@@ -124,6 +125,7 @@ function ensureIds(job) {
 }
 
 function setJob(job, filePath, dirty = false) {
+  for (const k of Object.keys(filters)) filters[k] = '';
   state.job = ensureIds(Calc.normalizeJob(job));
   state.filePath = filePath || null;
   state.dirty = dirty;
@@ -196,7 +198,8 @@ function renderTable(key) {
   const tools = def.cols.some(c => c.type === 'item') && rows.length
     ? el('div', { class: 'table-tools' }, [addBtn, bulkItemPicker(key)])
     : addBtn;
-  host.replaceChildren(el('div', { class: 'table-wrap' }, table), tools);
+  host.replaceChildren(...(FILTER_KEYS.includes(key) ? [tableBar(key)] : []), el('div', { class: 'table-wrap' }, table), tools);
+  if (FILTER_KEYS.includes(key)) applyFilter(key);
   if (key === 'quotes') renderEstimates();
   updateTotals();
 }
@@ -335,15 +338,71 @@ function formatInput(v) {
 function onCellKey(e, key, row, ci) {
   const rows = state.job[key];
   const idx = rows.indexOf(row);
+  // With a filter on, moving up and down skips the rows it hides.
+  const trs = [...document.querySelectorAll(`[data-table="${key}"] tbody tr`)];
+  const visible = i => trs[i] && !trs[i].hidden;
+  const step = dir => { for (let i = idx + dir; i >= 0 && i < rows.length; i += dir) if (visible(i)) return i; return -1; };
   if (e.key === 'Enter') {
     e.preventDefault();
-    if (idx === rows.length - 1) addRow(key, ci);
-    else focusCell(key, idx + 1, ci);
-  } else if (e.key === 'ArrowDown' && idx < rows.length - 1) {
-    e.preventDefault(); focusCell(key, idx + 1, ci);
-  } else if (e.key === 'ArrowUp' && idx > 0) {
-    e.preventDefault(); focusCell(key, idx - 1, ci);
+    const next = step(1);
+    if (next >= 0) focusCell(key, next, ci);
+    else addRow(key, ci);
+  } else if (e.key === 'ArrowDown' && step(1) >= 0) {
+    e.preventDefault(); focusCell(key, step(1), ci);
+  } else if (e.key === 'ArrowUp' && step(-1) >= 0) {
+    e.preventDefault(); focusCell(key, step(-1), ci);
   }
+}
+
+// ---------- Filtering long tables, and compact rows ----------
+
+const FILTER_KEYS = ['draws', 'labour', 'equipment', 'materials'];
+const filters = {};
+
+// Everything a row can be found by: its text, its amount as shown and as typed, its
+// estimate item (or "not linked"), and paid / unpaid.
+function rowText(key, row) {
+  const parts = [];
+  for (const c of TABLES[key].cols) {
+    const v = row[c.key];
+    if (c.type === 'money') parts.push(String(v ?? ''), formatInput(v));
+    else if (c.type === 'check') parts.push(Calc.isPaid(row) ? 'paid' : 'unpaid');
+    else if (c.type === 'item') parts.push(Calc.itemLabel(Calc.estItemOf(row)) || 'not linked');
+    else parts.push(String(v ?? ''));
+  }
+  return parts.join(' ').toLowerCase();
+}
+
+function applyFilter(key) {
+  const q = (filters[key] || '').trim().toLowerCase();
+  const rows = state.job[key];
+  let shown = 0, total = 0;
+  for (const row of rows) {
+    const tr = document.querySelector(`[data-table="${key}"] tbody tr[data-id="${CSS.escape(row.id)}"]`);
+    const text = ` ${rowText(key, row)} `;
+    // "paid" on its own means paid, not "unpaid"
+    const match = !q || q.split(/\s+/).every(w => (w === 'paid' ? text.includes(' paid ') : text.includes(w)));
+    if (tr) tr.hidden = !match;
+    if (match) { shown++; total += Calc.money(row.amount); }
+  }
+  const info = document.querySelector(`[data-table="${key}"] .filter-info`);
+  if (info) info.textContent = q ? `Showing ${shown} of ${rows.length} · ${money(Calc.round2(total))}` : '';
+}
+
+function tableBar(key) {
+  const input = el('input', { type: 'search', class: 'row-filter', placeholder: 'Filter rows…', 'aria-label': 'Filter rows', title: 'Type any text, amount, estimate item, “not linked”, “paid” or “unpaid”' });
+  input.value = filters[key] || '';
+  input.addEventListener('input', () => { filters[key] = input.value; applyFilter(key); });
+  const box = el('input', { type: 'checkbox', class: 'density-box' });
+  box.checked = document.body.classList.contains('compact');
+  box.addEventListener('change', () => setCompact(box.checked));
+  return el('div', { class: 'table-bar' }, [input, el('span', { class: 'filter-info hint', 'aria-live': 'polite' }), el('label', { class: 'density' }, [box, 'Compact rows'])]);
+}
+
+function setCompact(on) {
+  document.body.classList.toggle('compact', on);
+  for (const b of $$('.density-box')) b.checked = on;
+  try { localStorage.setItem('jobcosting.compact', on ? '1' : ''); } catch { /* not remembered */ }
 }
 
 function focusCell(key, rowIdx, colIdx) {
@@ -354,6 +413,12 @@ function focusCell(key, rowIdx, colIdx) {
 }
 
 function addRow(key, focusCol = 0) {
+  if (filters[key]) {
+    filters[key] = '';
+    const f = document.querySelector(`[data-table="${key}"] .row-filter`);
+    if (f) f.value = '';
+    applyFilter(key);
+  }
   const row = { id: newId() };
   for (const c of TABLES[key].cols) row[c.key] = '';
   if (key === 'draws') row.drawNumber = String(nextDrawNumber());
@@ -428,19 +493,7 @@ function updateTotals() {
   }
 
   const pct = Calc.formatPercent;
-  $('#k-contract').textContent = money(t.totalContract);
-  $('#k-contract-sub').textContent = `Remaining to bill ${money(t.remainingToBill)}`;
-  $('#k-draws').textContent = money(t.draws);
-  $('#k-draws-sub').textContent = `${pct(t.billedPercent)} of contract · ${t.drawCount} draw${t.drawCount === 1 ? '' : 's'}`
-    + (t.drawCount ? ` · ${money(t.drawsOutstanding)} not yet paid` : '');
-  $('#k-costs').textContent = money(t.totalCosts);
-  $('#k-costs-sub').textContent = `Includes ${t.overheadPercent}% overhead`;
-  $('#k-ptd').textContent = money(t.profitToDate);
-  $('#k-ptd').classList.toggle('neg', t.profitToDate < 0);
   const f = Calc.forecast(j);
-  $('#k-ptd-sub').textContent = f.ready
-    ? `Margin ${pct(t.marginToDate)} · Forecast ${money(f.profit)}`
-    : `Margin ${pct(t.marginToDate)} · Contract profit ${money(t.profit)}`;
 
   $('#b-labour').textContent = money(t.labour);
   $('#b-equipment').textContent = money(t.equipment);
@@ -485,6 +538,9 @@ function updateTotals() {
   $('#d-ptd').classList.toggle('neg', t.profitToDate < 0);
   $('#d-paid').textContent = money(t.drawsPaid);
   $('#d-out').textContent = money(t.drawsOutstanding);
+  $('#d-hb').textContent = money(t.drawsHoldback);
+  $('#d-hb-owed').textContent = money(t.holdbackOwed);
+  $('#d-hb-owed').classList.toggle('neg', t.holdbackOwed < 0);
   // Bar: paid part, then billed-but-unpaid part, as shares of the contract.
   const clamp = v => Math.min(Math.max(v, 0), 100);
   const paidPct = t.totalContract ? t.drawsPaid / t.totalContract * 100 : 0;
@@ -496,8 +552,6 @@ function updateTotals() {
     ? `${pct(t.billedPercent)} of the contract billed, ${pct(paidPct)} paid${t.billedPercent > 100 ? ' — draws are more than the contract value' : ''}`
     : 'Enter approved quotes to see how much of the contract has been billed.';
 
-  $('#nav-summary').textContent = `Profit to date ${money(t.profitToDate)}`;
-  $('#nav-summary').classList.toggle('neg', t.profitToDate < 0);
   $('#nav-contract').textContent = money(t.totalContract);
   $('#nav-draws').textContent = money(t.draws);
   $('#nav-labour').textContent = money(t.labour);
@@ -507,6 +561,85 @@ function updateTotals() {
   renderSplit(t);
   renderSuppliers();
   updateEstimates();
+  renderSummary(t, f);
+}
+
+// ---------- Summary: how the job is doing ----------
+
+const HEALTH_BADGE = { empty: '', good: '', watch: 'Watch', bad: 'Needs attention' };
+
+function renderSummary(t, f) {
+  const pct = Calc.formatPercent;
+  const j = state.job;
+  const h = Calc.health(j);
+  const e = Calc.estimates(j);
+  $('#health').dataset.level = h.level;
+  $('#healthTitle').textContent = h.title;
+  $('#healthDetail').textContent = h.detail;
+  const badge = $('#nav-summary');
+  badge.textContent = HEALTH_BADGE[h.level] || (t.draws || t.subtotal ? `Profit to date ${money(t.profitToDate)}` : '');
+  badge.classList.toggle('neg', h.level === 'bad' || (!HEALTH_BADGE[h.level] && t.profitToDate < 0));
+
+  // Headline figures
+  $('#k-ptd').textContent = money(t.profitToDate);
+  $('#k-ptd').classList.toggle('neg', t.profitToDate < 0);
+  $('#k-ptd-sub').textContent = t.draws ? `${pct(t.marginToDate)} of the draws billed` : 'No draws billed yet';
+  $('#k-fc').textContent = f.ready ? money(f.profit) : '—';
+  $('#k-fc').classList.toggle('neg', f.ready && f.profit < 0);
+  $('#k-fc-sub').textContent = f.ready ? `${pct(f.margin)} margin · ${fmtDays(f.daysRemaining)} left` : 'Enter days worked on Profit Forecast';
+  if (e.any) {
+    $('#k-est-label').textContent = 'Estimate Used';
+    $('#k-est').textContent = pct(e.usedPercent);
+    $('#k-est').classList.toggle('neg', e.remaining < 0);
+    $('#k-est-sub').textContent = e.remaining < 0 ? `${money(-e.remaining)} over the estimate` : `${money(e.remaining)} left in the estimate`;
+  } else {
+    $('#k-est-label').textContent = 'Total Costs';
+    $('#k-est').textContent = money(t.totalCosts);
+    $('#k-est').classList.remove('neg');
+    $('#k-est-sub').textContent = `Includes ${t.overheadPercent}% overhead`;
+  }
+  $('#k-billed').textContent = pct(t.billedPercent);
+  $('#k-billed-sub').textContent = `${money(t.remainingToBill)} left to bill of ${money(t.totalContract)}`;
+
+  // Estimate vs actual bars (or, with no estimate, where the money went)
+  const host = $('#sumItems');
+  if (e.any) {
+    const b = Calc.estimateByItem(j);
+    const bar = (label, used, text, cls) => {
+      const fill = el('i', { class: cls });
+      fill.style.width = `${Math.min(Math.max(used, 0), 100)}%`;
+      return el('div', { class: 'sum-item' }, [el('span', { class: 'sum-label', text: label }), el('span', { class: 'sum-bar' }, fill), el('span', { class: `sum-text${cls === 'over' ? ' neg' : ''}`, text })]);
+    };
+    host.replaceChildren(
+      ...b.lines.filter(l => l.estimated || l.actual).map(l => (l.estimated
+        ? bar(l.name, l.usedPercent, l.left < 0 ? `${pct(l.usedPercent)} · over ${money(-l.left)}` : `${pct(l.usedPercent)} · ${money(l.left)} left`, l.left < 0 ? 'over' : '')
+        : bar(l.name, 100, `${money(l.actual)} · not in estimate`, 'over'))),
+      bar('Contract billed', t.billedPercent, `${pct(t.billedPercent)} billed`, 'billed'),
+    );
+    $('#sumItemsTitle').textContent = 'Estimate vs Actual, by Item';
+    $('#split').classList.add('none');
+    $('#legend').hidden = true;
+  } else {
+    host.replaceChildren(el('p', { class: 'hint', text: 'Enter your estimate on the Estimate page to see each item’s estimate against what you’ve spent.' }));
+    $('#sumItemsTitle').textContent = 'Where the Money Went';
+    $('#legend').hidden = false;
+  }
+
+  // Cash
+  const hb = t.holdbackPercent > 0 || t.holdbackReceived;
+  for (const r of $$('.hb-row')) r.hidden = !hb;
+  $('#c-draws').textContent = money(t.draws);
+  $('#c-draw-count').textContent = `(${t.drawCount})`;
+  $('#c-hb-pct').textContent = `(${t.holdbackPercent}%)`;
+  $('#c-hb').textContent = t.drawsHoldback ? `(${money(t.drawsHoldback)})` : money(0);
+  $('#c-paid').textContent = money(t.drawsPaid);
+  $('#c-paid-count').textContent = `(${t.drawsPaidCount} of ${t.drawCount})`;
+  $('#c-out').textContent = money(t.drawsOutstanding);
+  $('#c-out-note').textContent = hb ? '(net of holdback)' : '(billed, not yet paid)';
+  $('#c-hb-owed').textContent = money(t.holdbackOwed);
+  $('#c-hb-due').textContent = String(j.holdbackDue || '').trim() ? `(due ${String(j.holdbackDue).trim()})` : '';
+  $('#c-unpaid').textContent = money(t.materialsUnpaid);
+  $('#c-unpaid-count').textContent = `(${t.materialsUnpaidCount} invoice${t.materialsUnpaidCount === 1 ? '' : 's'})`;
 }
 
 function renderSplit(t) {
@@ -639,20 +772,20 @@ function updateEstimates() {
   // Estimate vs actual
   $('#estCompare').hidden = !e.any;
   for (const r of $$('.est-row')) r.hidden = !e.any;
+  const nav = $('#nav-estimate');
+  nav.textContent = e.any ? `${pct(e.usedPercent)} used` : (state.job.quotes.length ? 'Not entered yet' : '');
+  nav.classList.toggle('neg', e.any && e.remaining < 0);
   if (!e.any) return;
   $('#e-cost').textContent = money(e.total.totalCost);
+  $('#e-cost-sub').textContent = e.complete ? `All ${e.quoteCount} quote${e.quoteCount === 1 ? '' : 's'} estimated` : `${e.count} of ${e.quoteCount} quotes estimated`;
   $('#e-actual').textContent = money(e.actualDirect);
-  $('#e-left').textContent = money(e.remaining);
+  $('#e-left').textContent = e.remaining < 0 ? `Over ${money(-e.remaining)}` : money(e.remaining);
   $('#e-left').classList.toggle('neg', e.remaining < 0);
-  $('#e-profit').textContent = `${money(e.total.profit)} (${pct(e.total.margin)})`;
+  $('#e-left-sub').textContent = `${pct(e.usedPercent)} used · ${pct(e.billedPercent)} of contract billed`;
+  $('#e-profit').textContent = money(e.total.profit);
   $('#e-profit').classList.toggle('neg', e.total.profit < 0);
   $('#e-profit').classList.toggle('pos', e.total.profit >= 0);
-  const clamp = v => Math.min(Math.max(v, 0), 100);
-  $('#e-used').textContent = pct(e.usedPercent);
-  $('#e-used-bar').style.width = `${clamp(e.usedPercent)}%`;
-  $('#e-used-bar').classList.toggle('over', e.usedPercent > 100);
-  $('#e-billed').textContent = pct(e.billedPercent);
-  $('#e-billed-bar').style.width = `${clamp(e.billedPercent)}%`;
+  $('#e-profit-sub').textContent = `${pct(e.total.margin)} margin`;
   const notes = [];
   if (!e.complete) notes.push(`Only ${e.count} of ${e.quoteCount} quotes have an estimate, so actual costs for the whole job are being compared with part of the estimate.`);
   if (e.remaining < 0) notes.push(`Actual costs are ${money(-e.remaining)} over the estimate.`);
@@ -769,6 +902,11 @@ function renderFields() {
   for (const input of $$('[data-field]')) input.value = state.job[input.dataset.field] || '';
   $('#jobNameTop').value = state.job.jobName || '';
   $('#overheadPercent').value = state.job.overheadPercent;
+  for (const input of $$('[data-hb]')) {
+    const k = input.dataset.hb, v = state.job[k];
+    input.value = k === 'holdbackReceived' && !isEmpty(v) && !isBadAmount(v) ? formatInput(v) : (v ?? '');
+    input.classList.toggle('invalid', k !== 'holdbackDue' && isBadAmount(v));
+  }
   for (const input of $$('[data-fc]')) {
     const v = state.job[input.dataset.fc];
     input.value = input.dataset.fc === 'materialsRemaining' && !isEmpty(v) && !isBadAmount(v) ? formatInput(v) : (v ?? '');
@@ -839,6 +977,10 @@ function renderBrand() {
   $('#brandName').textContent = c.logo ? '' : (c.name || 'Job Costing');
   $('#brandName').hidden = !!c.logo;
   $('#brand').title = c.name ? `${c.name} — Job Costing` : 'Job Costing';
+  $('#homeLogo').src = $('#brandLogo').src;
+  $('#homeLogo').classList.toggle('custom', !!c.logo);
+  $('#homeBrandName').textContent = c.logo ? '' : (c.name || 'Job Costing');
+  $('#homeBrandName').hidden = !!c.logo;
   $('#nav-company').textContent = c.name || 'Add your name and logo';
 }
 
@@ -982,8 +1124,15 @@ function buildReport() {
     el('table', { class: 'rp-figures' }, el('tbody', {}, [
       line('Contract value', money(t.totalContract)),
       line(`Margin on draws submitted`, pct(t.marginToDate)),
-      line(`Paid by client (${t.drawsPaidCount} of ${t.drawCount} draws)`, money(t.drawsPaid)),
-      line('Billed, not yet paid', money(t.drawsOutstanding)),
+      ...(t.holdbackPercent || t.holdbackReceived ? [
+        line(`Holdback kept by client (${t.holdbackPercent}% of each draw)`, money(t.drawsHoldback)),
+        line(`Paid by client, net of holdback (${t.drawsPaidCount} of ${t.drawCount} draws)`, money(t.drawsPaid)),
+        line('Billed, not yet paid (net of holdback)', money(t.drawsOutstanding)),
+        line(`Holdback owed to you${String(j.holdbackDue || '').trim() ? ` (due ${String(j.holdbackDue).trim()})` : ''}`, money(t.holdbackOwed), 'strong'),
+      ] : [
+        line(`Paid by client (${t.drawsPaidCount} of ${t.drawCount} draws)`, money(t.drawsPaid)),
+        line('Billed, not yet paid', money(t.drawsOutstanding)),
+      ]),
       line(`Remaining to bill (${pct(t.billedPercent)} of contract billed)`, money(t.remainingToBill)),
       line(`Contract profit on costs to date (${pct(t.margin)})`, money(t.profit), neg(t.profit).trim()),
       f.ready ? line(`Forecast profit at completion (${pct(f.margin)})`, money(f.profit), `strong${neg(f.profit)}`) : null,
@@ -1132,6 +1281,7 @@ async function confirmIfDirty() {
   const choice = await window.api.confirmDiscard();
   if (choice === 'cancel') return false;
   if (choice === 'save') return save(false);
+  window.api.clearRecovery().catch(() => {}); // their changes are being thrown away
   return true;
 }
 
@@ -1154,6 +1304,8 @@ async function save(saveAs) {
     state.dirty = false;
     updateTitle();
     toast(`Job saved${invalidAmountNote()}`);
+    recordRecent();
+    window.api.clearRecovery().catch(() => {});
     return true;
   } catch (err) {
     toast(`Could not save: ${errMsg(err)}`);
@@ -1213,6 +1365,7 @@ const commands = {
   async new() {
     if (!(await confirmIfDirty())) return;
     setJob(Calc.newJob(), null);
+    hideHome();
     switchTab('summary');
     $('[data-field="jobName"]').focus();
   },
@@ -1220,7 +1373,7 @@ const commands = {
     if (!(await confirmIfDirty())) return;
     try {
       const res = await window.api.openJob();
-      if (res) { setJob(res.job, res.filePath); toast('Job opened'); }
+      if (res) { setJob(res.job, res.filePath); recordRecent(); hideHome(); switchTab('summary'); toast('Job opened'); }
     } catch (err) { toast(`Could not open file: ${errMsg(err)}`); }
   },
   save: () => save(false),
@@ -1243,6 +1396,7 @@ const commands = {
     } catch (err) { toast(`Could not export: ${errMsg(err)}`); }
   },
   checkUpdates() { return checkUpdates(false); },
+  home: () => showHome(),
   toggleTheme: () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'),
   async exportPdf() {
     buildReport();
@@ -1252,6 +1406,130 @@ const commands = {
     } catch (err) { toast(`Could not export PDF: ${errMsg(err)}`); }
   },
 };
+
+// ---------- Start screen ----------
+
+let recovery = null; // unsaved work found at start-up, until restored or discarded
+const samePath = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+const LEVEL_TEXT = { empty: 'Not started', good: 'On track', watch: 'Watch', bad: 'Needs attention' };
+
+// The job's headline figures, kept with its place in the list.
+function recordRecent() {
+  if (!state.filePath) return;
+  const j = state.job, t = Calc.totals(j), e = Calc.estimates(j), h = Calc.health(j);
+  window.api.recordRecent({
+    path: state.filePath, name: j.jobName || '', number: j.jobNumber || '', client: j.client || '',
+    contract: t.totalContract, profitToDate: t.profitToDate, billed: t.billedPercent, used: e.any ? e.usedPercent : null,
+    outstanding: t.drawsOutstanding, holdbackOwed: t.holdbackOwed,
+    level: h.level, title: h.level === 'good' && !e.any ? 'On track' : LEVEL_TEXT[h.level],
+  }).catch(() => {});
+}
+
+const hasJob = () => !!(state.filePath || state.dirty);
+
+async function showHome() {
+  document.body.classList.add('at-home');
+  $('#home').hidden = false;
+  const back = $('#homeBack');
+  back.hidden = !hasJob();
+  back.textContent = `‹ Back to ${state.job.jobName || 'Untitled job'}`;
+  await renderHome();
+  $('#homeFind').focus();
+}
+
+function hideHome() {
+  document.body.classList.remove('at-home');
+  $('#home').hidden = true;
+}
+
+function whenText(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Today, ${time}`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+}
+
+async function renderHome() {
+  const pct = Calc.formatPercent;
+  let jobs = [];
+  try { jobs = await window.api.recentList(); } catch { jobs = []; }
+  try { recovery = await window.api.getRecovery(); } catch { recovery = null; }
+  // Recovered work (only offered while it isn't the job that's open right now)
+  const showRecovery = recovery && !state.dirty;
+  $('#recover').hidden = !showRecovery;
+  if (showRecovery) $('#recoverText').textContent = `${recovery.job.jobName || 'Untitled job'} — auto-saved ${whenText(recovery.savedAt).replace(/^Today, /, 'today at ')}, after the app closed without saving.`;
+
+  const live = jobs.filter(r => !r.missing);
+  const add = k => live.reduce((a, r) => a + (r[k] || 0), 0);
+  $('#h-count').textContent = String(live.length);
+  $('#h-contract').textContent = money(add('contract'));
+  $('#h-out').textContent = money(add('outstanding'));
+  $('#h-hb').textContent = money(add('holdbackOwed'));
+  $('#homeEmpty').hidden = jobs.length > 0;
+
+  const q = $('#homeFind').value.trim().toLowerCase();
+  const rows = jobs.filter(r => !q || [r.name, r.number, r.client, r.path.split(/[\\/]/).pop()].join(' ').toLowerCase().includes(q));
+  const bar = (label, v, cls) => {
+    const fill = el('i', { class: cls });
+    fill.style.width = `${Math.min(Math.max(v || 0, 0), 100)}%`;
+    return el('div', { class: 'mini-row' }, [el('span', { text: label }), el('span', { class: 'mini-meter' }, fill), el('span', { class: `mini-val${cls === 'over' ? ' neg' : ''}`, text: v === null ? '—' : pct(v) })]);
+  };
+  $('#homeJobs').replaceChildren(...rows.map(r => {
+    const name = r.name || r.path.split(/[\\/]/).pop();
+    const level = r.missing ? 'missing' : r.level;
+    const open = el('button', { class: 'job-link', title: r.path, text: name, onclick: () => openRecent(r) });
+    return el('tr', { class: r.missing ? 'missing' : '' }, [
+      el('td', {}, [open, el('div', { class: 'hint', text: [r.number, r.client].filter(Boolean).join(' · ') || r.path })]),
+      el('td', {}, el('span', { class: `pill ${level}` }, [el('i'), r.missing ? 'File not found' : (r.title || LEVEL_TEXT[r.level])])),
+      el('td', { class: 'num', text: r.contract === null ? '' : money(r.contract) }),
+      el('td', { class: `num${(r.profitToDate || 0) < 0 ? ' neg' : ' pos'}`, text: r.profitToDate === null ? '' : money(r.profitToDate) }),
+      el('td', { class: 'bars' }, [bar('Used', r.used, r.used !== null && r.used > 100 ? 'over' : ''), bar('Billed', r.billed, 'billed')]),
+      el('td', { class: 'num hint', text: whenText(r.savedAt) }),
+      el('td', { class: 'act' }, el('button', { class: 'icon', title: 'Remove from this list (the file isn’t deleted)', 'aria-label': `Remove ${name} from the list`, text: '×', onclick: async () => { await window.api.removeRecent(r.path).catch(() => {}); renderHome(); } })),
+    ]);
+  }));
+}
+
+async function openRecent(r) {
+  if (samePath(r.path, state.filePath)) { hideHome(); return; } // already open
+  if (!(await confirmIfDirty())) return;
+  try {
+    const res = await window.api.openRecent(r.path);
+    setJob(res.job, res.filePath);
+    recordRecent();
+    hideHome();
+    switchTab('summary');
+    toast('Job opened');
+  } catch (err) {
+    toast(errMsg(err), r.missing ? { label: 'Remove from list', run: async () => { await window.api.removeRecent(r.path).catch(() => {}); $('#toast').classList.remove('show'); renderHome(); } } : null);
+  }
+}
+
+async function restoreRecovery() {
+  if (!recovery) return;
+  if (!(await confirmIfDirty())) return;
+  setJob(recovery.job, recovery.filePath, true);
+  hideHome();
+  switchTab('summary');
+  toast('Recovered work restored — save it to keep it');
+}
+
+async function discardRecovery() {
+  if (!recovery) return;
+  if (!window.confirm(`Discard the recovered unsaved work for “${recovery.job.jobName || 'Untitled job'}”? This can’t be undone.`)) return;
+  await window.api.clearRecovery().catch(() => {});
+  recovery = null;
+  renderHome();
+}
+
+// Auto-save: while there are unsaved changes, keep a recovery copy (every minute).
+const AUTOSAVE_MS = 60 * 1000;
+async function autosaveNow() {
+  if (!state.dirty) return false;
+  try { await window.api.saveRecovery(serialize(), state.filePath); return true; } catch { return false; }
+}
 
 // ---------- Light / dark theme ----------
 // The theme is applied before the first paint by theme.js; this switches it and
@@ -1315,6 +1593,19 @@ function init() {
       input.addEventListener('blur', () => { if (!isBadAmount(input.value)) input.value = formatInput(state.job.materialsRemaining); });
     }
   }
+  for (const input of $$('[data-hb]')) {
+    const k = input.dataset.hb;
+    input.addEventListener('input', () => {
+      state.job[k] = input.value;
+      if (k !== 'holdbackDue') input.classList.toggle('invalid', isBadAmount(input.value));
+      markDirty();
+      updateTotals();
+    });
+    if (k === 'holdbackReceived') {
+      input.addEventListener('focus', () => { if (!isBadAmount(input.value)) input.value = isEmpty(state.job[k]) ? '' : String(Calc.num(state.job[k])); input.select(); });
+      input.addEventListener('blur', () => { if (!isBadAmount(input.value)) input.value = formatInput(state.job[k]); });
+    }
+  }
   for (const a of $$('[data-goto]')) a.addEventListener('click', e => { e.preventDefault(); switchTab(a.dataset.goto); });
 
   for (const input of $$('[data-company]')) {
@@ -1333,6 +1624,15 @@ function init() {
   $('#updateBtn').addEventListener('click', offerUpdate);
   $('#versionBtn').addEventListener('click', () => checkUpdates(false));
   $('#themeToggle').addEventListener('click', commands.toggleTheme);
+  $('#navHome').addEventListener('click', showHome);
+  $('#homeOpen').addEventListener('click', commands.open);
+  $('#homeNew').addEventListener('click', commands.new);
+  $('#homeBack').addEventListener('click', hideHome);
+  $('#homeFind').addEventListener('input', renderHome);
+  $('#recoverRestore').addEventListener('click', restoreRecovery);
+  $('#recoverDiscard').addEventListener('click', discardRecovery);
+  setInterval(autosaveNow, AUTOSAVE_MS);
+  try { if (localStorage.getItem('jobcosting.compact')) document.body.classList.add('compact'); } catch { /* default spacing */ }
   renderThemeToggle();
   setTimeout(() => checkUpdates(true), 4000); // quiet check shortly after starting
   window.api.onRequestClose(async () => {
@@ -1340,6 +1640,7 @@ function init() {
   });
 
   setJob(Calc.newJob(), null);
+  showHome();
 }
 
 init();

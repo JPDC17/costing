@@ -20,7 +20,28 @@ test('compareVersions', () => {
 });
 
 test('validateManifest accepts a good manifest', () => {
-  assert.deepStrictEqual(U.validateManifest(good), { ...good, date: '' });
+  assert.deepStrictEqual(U.validateManifest(good), { ...good, date: '', setup: null });
+});
+
+test('validateManifest: the installer is picked up when present and trusted, ignored otherwise', () => {
+  const setup = { setupUrl: 'https://github.com/JPDC17/costing/releases/download/v1.6.0/JobCosting-Setup.exe', setupSize: 90000000, setupSha256: 'B'.repeat(64) };
+  assert.deepStrictEqual(U.validateManifest({ ...good, ...setup }).setup, { url: setup.setupUrl, size: 90000000, sha256: 'b'.repeat(64) });
+  // a bad installer entry never stops the portable update
+  assert.strictEqual(U.validateManifest({ ...good, ...setup, setupUrl: 'https://evil.example/Setup.exe' }).setup, null);
+  assert.strictEqual(U.validateManifest({ ...good, ...setup, setupSha256: 'nope' }).setup, null);
+  assert.strictEqual(U.validateManifest({ ...good, ...setup, setupSize: 5 }).setup, null);
+  assert.strictEqual(U.validateManifest({ ...good, ...setup, setupSize: 5 }).url, good.url);
+});
+
+test('installCommand waits for the app, then runs the installer silently; paths are quoted', () => {
+  const text = Buffer.from(U.installCommand("C:\\Users\\O'Brien’s\\Setup.exe", 4321), 'base64').toString('utf16le');
+  assert.ok(text.startsWith("$Setup = 'C:\\Users\\O''Brien’’s\\Setup.exe'\n$AppPid = 4321\n"));
+  assert.match(text, /Wait-Process -Id \$AppPid/);
+  assert.match(text, /-ArgumentList '\/S','--force-run'/);
+  assert.strictEqual(Buffer.from(U.installCommand('x', 'not a number'), 'base64').toString('utf16le').split('\n')[1], '$AppPid = 0');
+  const launcher = Buffer.from(U.launchInstallCommand('C:\\a\\Setup.exe', 1), 'base64').toString('utf16le');
+  assert.match(launcher, /Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden/);
+  assert.ok(launcher.includes(U.installCommand('C:\\a\\Setup.exe', 1)));
 });
 
 test('validateManifest rejects bad or untrusted manifests', () => {
