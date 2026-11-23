@@ -690,7 +690,7 @@ function renderEstimates() {
   const host = $('#estTable');
   const quotes = state.job.quotes;
   if (!quotes.length) {
-    host.replaceChildren(el('p', { class: 'hint est-empty', text: 'Add your approved quotes above. Each one gets a column here for its estimated costs.' }));
+    host.replaceChildren(el('p', { class: 'hint est-empty', text: 'Add your approved quotes on the Contract page. Each one gets a column here for its estimated costs.' }));
     updateEstimates();
     return;
   }

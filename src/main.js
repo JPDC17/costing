@@ -511,7 +511,7 @@ async function installUpdate(m) {
     // after the app closes) and exits with 0 once that has started.
     // Portable: swap the exe once the app has closed. Installed: run the new installer
     // silently once the app has closed; it starts the new version when it's done.
-    const command = installed ? Updater.launchInstallCommand(newExe, process.pid) : Updater.launchCommand(newExe, portableExe());
+    const command = installed ? Updater.launchInstallCommand(newExe, process.pid, app.getPath('exe')) : Updater.launchCommand(newExe, portableExe());
     const launcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', command], { stdio: 'ignore', windowsHide: true, env });
     const code = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { launcher.kill(); reject(new Error('timed out')); }, 30000);

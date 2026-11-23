@@ -34,14 +34,15 @@ test('validateManifest: the installer is picked up when present and trusted, ign
 });
 
 test('installCommand waits for the app, then runs the installer silently; paths are quoted', () => {
-  const text = Buffer.from(U.installCommand("C:\\Users\\O'Brien’s\\Setup.exe", 4321), 'base64').toString('utf16le');
-  assert.ok(text.startsWith("$Setup = 'C:\\Users\\O''Brien’’s\\Setup.exe'\n$AppPid = 4321\n"));
+  const text = Buffer.from(U.installCommand("C:\\Users\\O'Brien’s\\Setup.exe", 4321, 'C:\\Apps\\Job Costing.exe'), 'base64').toString('utf16le');
+  assert.ok(text.startsWith("$Setup = 'C:\\Users\\O''Brien’’s\\Setup.exe'\n$AppPid = 4321\n$AppExe = 'C:\\Apps\\Job Costing.exe'\n"));
   assert.match(text, /Wait-Process -Id \$AppPid/);
-  assert.match(text, /-ArgumentList '\/S','--force-run'/);
-  assert.strictEqual(Buffer.from(U.installCommand('x', 'not a number'), 'base64').toString('utf16le').split('\n')[1], '$AppPid = 0');
-  const launcher = Buffer.from(U.launchInstallCommand('C:\\a\\Setup.exe', 1), 'base64').toString('utf16le');
+  assert.match(text, /Start-Process -FilePath \$Setup -ArgumentList '\/S' -PassThru -Wait/);
+  assert.match(text, /Start-Process -FilePath \$AppExe/); // the app is reopened even if the installer fails
+  assert.strictEqual(Buffer.from(U.installCommand('x', 'not a number', 'y'), 'base64').toString('utf16le').split('\n')[1], '$AppPid = 0');
+  const launcher = Buffer.from(U.launchInstallCommand('C:\\a\\Setup.exe', 1, 'C:\\b.exe'), 'base64').toString('utf16le');
   assert.match(launcher, /Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden/);
-  assert.ok(launcher.includes(U.installCommand('C:\\a\\Setup.exe', 1)));
+  assert.ok(launcher.includes(U.installCommand('C:\\a\\Setup.exe', 1, 'C:\\b.exe')));
 });
 
 test('validateManifest rejects bad or untrusted manifests', () => {

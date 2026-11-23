@@ -118,29 +118,36 @@ function launchCommand(newExe, target) {
   return launchEncoded(swapCommand(newExe, target));
 }
 
-// For the installed app: wait for the app (process id $AppPid) to close, then run the new
-// installer silently. It replaces the installed files and starts the app again
-// (--force-run). Logged to the same file as the portable swap.
+// For the installed app: wait for the app (process id $AppPid) to close, run the new
+// installer silently (it replaces the installed files), then start the app again from
+// $AppExe ourselves, so it reopens the same way whatever the installer does. If the
+// installer fails, the old version is started instead. Logged like the portable swap.
 const POWERSHELL_INSTALL = String.raw`$ErrorActionPreference = 'Stop'
 $log = Join-Path $env:TEMP 'JobCosting-update.log'
 function Write-Log([string]$m) { Add-Content -LiteralPath $log -Encoding UTF8 -Value ((Get-Date -Format s) + '  ' + $m) }
 try {
   Write-Log ('Installing ' + $Setup)
   Wait-Process -Id $AppPid -Timeout 120 -ErrorAction SilentlyContinue
-  $p = Start-Process -FilePath $Setup -ArgumentList '/S','--force-run' -PassThru -Wait
+  $p = Start-Process -FilePath $Setup -ArgumentList '/S' -PassThru -Wait
   Write-Log ('Installer finished with code ' + $p.ExitCode)
 } catch {
   Write-Log ('Could not run the installer: ' + $_.Exception.Message)
 }
+try {
+  Start-Process -FilePath $AppExe
+  Write-Log ('Started ' + $AppExe)
+} catch {
+  Write-Log ('Could not start the app: ' + $_.Exception.Message)
+}
 `;
 
-function installCommand(setupExe, appPid) {
-  const text = `$Setup = ${psQuote(setupExe)}\n$AppPid = ${Math.trunc(Number(appPid)) || 0}\n${POWERSHELL_INSTALL}`;
+function installCommand(setupExe, appPid, appExe) {
+  const text = `$Setup = ${psQuote(setupExe)}\n$AppPid = ${Math.trunc(Number(appPid)) || 0}\n$AppExe = ${psQuote(appExe)}\n${POWERSHELL_INSTALL}`;
   return Buffer.from(text, 'utf16le').toString('base64');
 }
 
-function launchInstallCommand(setupExe, appPid) {
-  return launchEncoded(installCommand(setupExe, appPid));
+function launchInstallCommand(setupExe, appPid, appExe) {
+  return launchEncoded(installCommand(setupExe, appPid, appExe));
 }
 
 module.exports = { TRUSTED_PREFIXES, compareVersions, validateManifest, POWERSHELL_SWAP, POWERSHELL_INSTALL, psQuote, swapCommand, launchCommand, installCommand, launchInstallCommand };

@@ -63,6 +63,8 @@ Write-Host '--- what the app recorded ---'
 if (Test-Path -LiteralPath $marker) { Get-Content -LiteralPath $marker | Write-Host } else { Write-Host '(nothing)' }
 Write-Host '--- update log ---'
 if (Test-Path -LiteralPath $updateLog) { Get-Content -LiteralPath $updateLog -Encoding UTF8 | Write-Host } else { Write-Host '(no log: the installer never ran)' }
+Write-Host '--- related processes still running ---'
+Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'Job|powershell|Setup' } | ForEach-Object { Write-Host ("{0,6} {1,-28} {2}" -f $_.ProcessId, $_.Name, ($_.CommandLine -replace '-EncodedCommand \S+', '-EncodedCommand ...')) }
 $fromInstall = [bool](Select-String -LiteralPath $marker -Pattern (' 9\.9\.9 started .*running ' + [regex]::Escape($exe) + '; installed') -Quiet -ErrorAction SilentlyContinue)
 $version = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
 Write-Host "Installed exe version now: $version"
